@@ -83,6 +83,23 @@ textarea#deckText{width:100%;min-height:90px;padding:8px;border-radius:8px;borde
 /* small helper */
 .muted{color:var(--muted);font-size:13px}
 .err{color:var(--danger);font-weight:600}
+
+/* Défaite */
+body.game-over{
+    background:#7a0000 !important;
+    transition:background 0.3s;
+}
+
+.stat.lose{
+    background:#c62828;
+    transition:background 0.3s;
+}
+
+.stat.lose .value{
+    color:white;
+    font-weight:bold;
+}
+
 </style>
 </head>
 <body>
@@ -103,7 +120,7 @@ textarea#deckText{width:100%;min-height:90px;padding:8px;border-radius:8px;borde
       <button id="loadDeck" class="btn">Charger Deck</button>
       <span id="loadStatus" class="muted" style="display:none">Chargement…</span>
 
-      <button id="drawHand" class="btn">Main initiale</button>
+      <button id="newGame" class="btn">Nouvelle partie</button>
       <button id="shuffleLib" class="btn">Mélanger</button>
       <button id="toggleHand" class="ghost small">Cacher main</button>
     </div>
@@ -117,11 +134,12 @@ textarea#deckText{width:100%;min-height:90px;padding:8px;border-radius:8px;borde
   </div>
 
   <div class="row-stats">
-    <div class="stat"><div class="muted">Vie</div><div id="life" class="value">40</div><div style="display:flex;gap:6px;justify-content:center"><button id="lifePlus" class="ghost small">+1</button><button id="lifeMinus" class="ghost small">-1</button></div></div>
-    <div class="stat"><div class="muted">Poison</div><div id="poison" class="value">0</div><div style="display:flex;gap:6px;justify-content:center"><button id="poisonPlus" class="ghost small">+1</button><button id="poisonMinus" class="ghost small">-1</button></div></div>
+    <div class="stat" id="lifeStat"><div class="muted">Vie</div><div id="life" class="value">40</div><div style="display:flex;gap:6px;justify-content:center"><button id="lifePlus" class="ghost small">+1</button><button id="lifeMinus" class="ghost small">-1</button></div></div>
+    <div class="stat" id="coStat"><div class="muted">Dégâts du commandant</div><div id="degat_du_co" class="value">0</div><div style="display:flex;gap:6px;justify-content:center"><button id="degat_du_coPlus" class="ghost small">+1</button><button id="degat_du_coMinus" class="ghost small">-1</button></div></div>
+    <div class="stat" id="poisonStat"><div class="muted">Poison</div><div id="poison" class="value">0</div><div style="display:flex;gap:6px;justify-content:center"><button id="poisonPlus" class="ghost small">+1</button><button id="poisonMinus" class="ghost small">-1</button></div></div>
     <div style="margin-left:auto" class="muted">Deck: <span id="deckCount">0</span> — Bibliothèque: <span id="libCount">0</span></div>
   </div>
-
+<br>
 <div class="zone" id="handZone">
         <div class="zone-title">Main (<span id="handCount">0</span>)</div>
         <div id="hand" class="hand" aria-live="polite"></div>
@@ -191,6 +209,9 @@ const state = {
   tokensTemplates: [],
   tokens: []     // token objects (displayed on battlefield)
 };
+// chosen commander remembered when loading a deck
+state.chosenCommander = null;
+state.chosenCommanderId = null;
 let undoStack = [];
 const UNDO_LIMIT = 200;
 let handHidden = false;
@@ -412,6 +433,34 @@ function renderZonesSmall(){
   // keep library hidden by default (as requested)
 }
 
+function updateGameOverDisplay(){
+
+    const life = parseInt(lifeNode.textContent);
+    const commander = parseInt($('degat_du_co').textContent);
+    const poison = parseInt(poisonNode.textContent);
+
+    // On enlève les anciennes couleurs
+    document.body.classList.remove("game-over");
+    $("lifeStat").classList.remove("lose");
+    $("coStat").classList.remove("lose");
+    $("poisonStat").classList.remove("lose");
+
+    if(life <= 0){
+        document.body.classList.add("game-over");
+        $("lifeStat").classList.add("lose");
+    }
+
+    if(commander >= 21){
+        document.body.classList.add("game-over");
+        $("coStat").classList.add("lose");
+    }
+
+    if(poison >= 10){
+        document.body.classList.add("game-over");
+        $("poisonStat").classList.add("lose");
+    }
+}
+
 function renderAll(){
   renderHand();
   renderBattlefield();
@@ -499,6 +548,25 @@ document.getElementById('zoomOverlay').onclick = ()=> {
   addMoveBtn('→ Command Zone','commandZone');
   addMoveBtn('Bibliothèque (dessus)','libraryTop');
   addMoveBtn('Bibliothèque (dessous)','libraryBottom');
+  if(isDoubleFaced(cardObj)){
+
+    const transformBtn = document.createElement("button");
+
+    transformBtn.textContent = "Transformer";
+
+    transformBtn.addEventListener("click", ()=>{
+
+        transformCard(cardObj);
+
+        renderAll();
+
+        closeMenu();
+
+    });
+
+    items.appendChild(transformBtn);
+
+}
 
   // Copy/token
   const copyBtn = document.createElement('button'); copyBtn.textContent = 'Créer copie/token';
@@ -682,8 +750,27 @@ async function fetchCardByName(name){
 function chooseImageFromData(data){
   return data.image_uris?.normal || data.card_faces?.[0]?.image_uris?.normal || data.image_uris?.large || '';
 }
+function isDoubleFaced(card){
+    return (
+        card.raw &&
+        Array.isArray(card.raw.card_faces) &&
+        card.raw.card_faces.length >= 2
+    );
+}
 
-$('drawHand').addEventListener('click', ()=> { if(state.library.length === 0) return alert('Bibliotheque vide'); drawX(7); });
+function transformCard(card){
+
+    if(!isDoubleFaced(card)) return;
+
+    card.face = card.face || 0;
+    card.face = 1 - card.face;
+
+    const face = card.raw.card_faces[card.face];
+
+    card.name = face.name;
+    card.image = face.image_uris.normal;
+}
+
 
 deckFile.addEventListener('change', (e)=>{
   const f = e.target.files && e.target.files[0];
@@ -730,6 +817,7 @@ $('loadDeck').addEventListener('click', async ()=>{
         raw: data,
         counters: {},
         tapped: false,
+        face: 0,
         zone: 'deck', // initial
         x: 20 + Math.random() * 200,
         y: 20 + Math.random() * 200,
@@ -756,6 +844,9 @@ $('loadDeck').addEventListener('click', async ()=>{
     if(idx > -1){
       const card = state.library.splice(idx,1)[0];
       state.commandZone.push(card);
+      // memorize chosen commander so we can restore it on new games
+      state.chosenCommander = card;
+      state.chosenCommanderId = card.id;
       commandWrap.style.display = 'block';
     } else {
       // fuzzy search
@@ -763,6 +854,8 @@ $('loadDeck').addEventListener('click', async ()=>{
       if(idx2 > -1){
         const card = state.library.splice(idx2,1)[0];
         state.commandZone.push(card);
+        state.chosenCommander = card;
+        state.chosenCommanderId = card.id;
         commandWrap.style.display = 'block';
       } else {
         // try fetching if not present
@@ -771,20 +864,100 @@ $('loadDeck').addEventListener('click', async ()=>{
           const d = fetched.data;
           const card = { id: uid('card'), name: d.name, image: chooseImageFromData(d), raw:d, counters:{}, tapped:false };
           state.commandZone.push(card);
+          // fetched commander (not originally in deck) — remember it too
+          state.chosenCommander = card;
+          state.chosenCommanderId = card.id;
           commandWrap.style.display = 'block';
         } else {
           commandWrap.style.display = 'none';
+          state.chosenCommander = null; state.chosenCommanderId = null;
           alert('Commandant non trouvé (zone masquée).');
         }
       }
     }
   } else {
     commandWrap.style.display = 'none';
+    state.chosenCommander = null; state.chosenCommanderId = null;
   }
   renderAll();
   if(errors.length) errorsDiv.innerHTML = '<div class="err">Erreurs :</div><ul style="color:#ffcccc">'+errors.map(e=>`<li>${e}</li>`).join('')+'</ul>';
   $('loadStatus').style.display = 'none';
 });
+
+function newGame(){
+  // restore the commander chosen at deck load (if any)
+  const savedCommanderId = state.chosenCommanderId || (state.chosenCommander && state.chosenCommander.id) || null;
+  const savedCommanderRef = state.chosenCommander || null;
+
+  // remove commander from any zone so we can re-place it into command zone
+  if(savedCommanderId){ removeCardById(savedCommanderId); }
+
+  // Réinitialisation des cartes
+  state.library = [];
+  state.hand = [];
+  state.battlefield = [];
+  state.graveyard = [];
+  state.exile = [];
+  state.commandZone = [];
+  state.tokens = [];
+
+  // Réinitialise toutes les cartes du deck et reconstruit la bibliothèque
+  let commanderFromDeck = null;
+  for(const card of state.deck){
+    card.counters = {};
+    card.tapped = false;
+    card.face = 0;
+    if(card.raw){
+      card.name = card.raw.name || card.raw.card_faces?.[0]?.name || card.name;
+      card.image = chooseImageFromData(card.raw);
+    }
+    card.x = 20 + Math.random()*200;
+    card.y = 20 + Math.random()*200;
+
+    // skip the saved commander when rebuilding the library
+    if(savedCommanderId && card.id === savedCommanderId){
+      commanderFromDeck = card;
+      continue;
+    }
+    state.library.push(card);
+  }
+
+  // place commander into command zone: prefer the object from the deck if present
+  if(commanderFromDeck){
+    state.commandZone.push(commanderFromDeck);
+    state.chosenCommander = commanderFromDeck;
+    state.chosenCommanderId = commanderFromDeck.id;
+    commandWrap.style.display = 'block';
+  } else if(savedCommanderRef){
+    // commander was fetched or created previously (not part of deck)
+    state.commandZone.push(savedCommanderRef);
+    state.chosenCommander = savedCommanderRef;
+    state.chosenCommanderId = savedCommanderRef.id;
+    commandWrap.style.display = 'block';
+  } else {
+    state.commandZone = [];
+    state.chosenCommander = null; state.chosenCommanderId = null;
+    commandWrap.style.display = 'none';
+  }
+
+  // Mélange
+  state.library = shuffleArray(state.library);
+
+  // Compteurs
+  lifeNode.textContent = 40;
+  poisonNode.textContent = 0;
+  $('degat_du_co').textContent = 0;
+
+  updateGameOverDisplay();
+
+  undoStack = [];
+  $('undoBtn').disabled = true;
+
+  if(state.library.length === 0) return alert('Bibliotheque vide');
+  drawX(7);
+
+  renderAll();
+}
 
 /* ===========================
    UI handlers (draw/mill/tutor etc)
@@ -795,16 +968,43 @@ $('tutorBtn').addEventListener('click', ()=>{ const name = prompt('Nom de la car
 $('revealTop').addEventListener('click', ()=>{ if(state.library.length === 0) return alert('Bibliothèque vide'); alert('Carte du dessus : ' + (state.library[0].name || '(sans nom)')); });
 $('shuffleLib').addEventListener('click', ()=>{ state.library = shuffleArray(state.library); renderAll(); });
 
-$('lifePlus').addEventListener('click', ()=> lifeNode.textContent = parseInt(lifeNode.textContent) + 1);
-$('lifeMinus').addEventListener('click', ()=> lifeNode.textContent = parseInt(lifeNode.textContent) - 1);
-$('poisonPlus').addEventListener('click', ()=> poisonNode.textContent = parseInt(poisonNode.textContent) + 1);
-$('poisonMinus').addEventListener('click', ()=> poisonNode.textContent = parseInt(poisonNode.textContent) - 1);
+$('lifePlus').addEventListener('click', ()=>{
+    lifeNode.textContent = parseInt(lifeNode.textContent) + 1;
+    updateGameOverDisplay();
+});
+$('lifeMinus').addEventListener('click', ()=>{
+    lifeNode.textContent = parseInt(lifeNode.textContent) - 1;
+    updateGameOverDisplay();
+});
+$('degat_du_coPlus').addEventListener('click', ()=>{
+    $('degat_du_co').textContent =
+        parseInt($('degat_du_co').textContent) + 1;
+        lifeNode.textContent = parseInt(lifeNode.textContent) - 1;
+    updateGameOverDisplay();
+});
+$('degat_du_coMinus').addEventListener('click', ()=>{
+    $('degat_du_co').textContent =
+        parseInt($('degat_du_co').textContent) - 1;
+        lifeNode.textContent = parseInt(lifeNode.textContent) + 1;
+    updateGameOverDisplay();
+});
+$('poisonPlus').addEventListener('click', ()=>{
+    poisonNode.textContent = parseInt(poisonNode.textContent) + 1;
+    updateGameOverDisplay();
+});
+$('poisonMinus').addEventListener('click', ()=>{
+    poisonNode.textContent = parseInt(poisonNode.textContent) - 1;
+    updateGameOverDisplay();
+});
 
 $('toggleHand').addEventListener('click', ()=>{
   handHidden = !handHidden;
   $('toggleHand').textContent = handHidden ? 'Révéler main' : 'Cacher main';
   renderAll();
 });
+
+$('newGame').addEventListener('click', newGame);
+
 
 /* ===========================
    Tokens: create from template
