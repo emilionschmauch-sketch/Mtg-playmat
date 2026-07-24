@@ -131,6 +131,17 @@ body.game-over{
       <button id="tutorBtn" class="ghost small">Tutor (nom)</button>
       <button id="revealTop" class="ghost small">Révéler dessus</button>
     </div>
+
+    <div style="margin-top:12px;border-top:1px solid rgba(255,255,255,0.06);padding-top:12px">
+      <label class="muted">Base de données Funcartes (importer plusieurs fichiers PNG dont le nom du fichier est le nom de la carte)</label>
+      <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+        <input id="funcarteFile" type="file" accept="image/png" multiple />
+        <button id="importFuncartes" class="btn small">Importer Funcartes</button>
+        <button id="viewFuncartes" class="ghost small">Voir BD</button>
+        <button id="clearFuncartes" class="ghost small">Effacer BD</button>
+        <span id="funcarteStatus" class="muted" style="display:none"></span>
+      </div>
+    </div>
   </div>
 
   <div class="row-stats">
@@ -228,7 +239,57 @@ const deckText = $('deckText'), deckFile = $('deckFile'), loadBtn = $('loadDeck'
       lifeNode = $('life'), poisonNode = $('poison'),
       deckCountNode = $('deckCount'), libCountNode = $('libCount'), handCountNode = $('handCount'),
       bfCountNode = $('bfCount'), graveCountNode = $('graveCount'), exileCountNode = $('exileCount'),
-      errorsDiv = $('errors');
+      errorsDiv = $('errors'),
+      funcarteFile = $('funcarteFile'), importFuncarteBtn = $('importFuncartes'), viewFuncarteBtn = $('viewFuncartes'),
+      clearFuncarteBtn = $('clearFuncartes'), funcarteStatus = $('funcarteStatus');
+
+/* ===========================
+   FUNCARTES DATABASE (localStorage-based)
+   =========================== */
+const funcarteDB = {
+  load() {
+    try {
+      const data = localStorage.getItem('funcarteDatabase');
+      return data ? JSON.parse(data) : {};
+    } catch (e) {
+      console.warn('Failed to load funcarteDatabase:', e);
+      return {};
+    }
+  },
+  save(db) {
+    try {
+      localStorage.setItem('funcarteDatabase', JSON.stringify(db));
+    } catch (e) {
+      console.warn('Failed to save funcarteDatabase:', e);
+    }
+  },
+  get(name) {
+    const db = this.load();
+    const key = (name || '').toLowerCase().trim();
+    return db[key] || null;
+  },
+  set(name, imageUrl) {
+    const db = this.load();
+    db[(name || '').toLowerCase().trim()] = { name, imageUrl };
+    this.save(db);
+  },
+  addMany(cards) {
+    const db = this.load();
+    for (const card of cards) {
+      db[(card.name || '').toLowerCase().trim()] = card;
+    }
+    this.save(db);
+  },
+  clear() {
+    localStorage.removeItem('funcarteDatabase');
+  },
+  getAll() {
+    return this.load();
+  }
+};
+
+// Load funcartes on startup
+let currentFuncartes = funcarteDB.load();
 
 /* ===========================
    UTILS
@@ -735,6 +796,22 @@ function tutorByName(name){
    =========================== */
 async function fetchCardByName(name){
   const enc = s => encodeURIComponent(s);
+  
+  // 1. Check local funcartes database first
+  const localCard = funcarteDB.get(name);
+  if(localCard){
+    return {
+      error: false,
+      data: {
+        name: localCard.name,
+        image_uris: { normal: localCard.imageUrl },
+        object: 'custom_funcard',
+        isFuncard: true
+      }
+    };
+  }
+  
+  // 2. If not found locally, fetch from Scryfall
   try{
     let r = await fetch(`https://api.scryfall.com/cards/named?exact=${enc(name)}`);
     let d = await r.json();
@@ -882,6 +959,72 @@ $('loadDeck').addEventListener('click', async ()=>{
   renderAll();
   if(errors.length) errorsDiv.innerHTML = '<div class="err">Erreurs :</div><ul style="color:#ffcccc">'+errors.map(e=>`<li>${e}</li>`).join('')+'</ul>';
   $('loadStatus').style.display = 'none';
+});
+
+/* ===========================
+   FUNCARTES handlers
+   =========================== */
+importFuncarteBtn.addEventListener('click', async ()=>{
+  const files = Array.from(funcarteFile.files || []);
+  if(files.length === 0) return alert('Sélectionne au moins un fichier PNG');
+
+  funcarteStatus.style.display = 'inline';
+  funcarteStatus.textContent = 'Importation…';
+
+  const validFiles = files.filter(f => f.type === 'image/png' || f.name.toLowerCase().endsWith('.png'));
+  if(validFiles.length === 0){
+    funcarteStatus.textContent = 'Aucun fichier PNG valide trouvé';
+    setTimeout(()=>{ funcarteStatus.style.display = 'none'; }, 3000);
+    return;
+  }
+
+  const cards = [];
+  let imported = 0;
+
+  await Promise.all(validFiles.map(file => new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const imageUrl = ev.target.result;
+      const name = file.name.replace(/\.png$/i, '').trim();
+      if(name && imageUrl){
+        cards.push({name, imageUrl});
+        imported++;
+      }
+      resolve();
+    };
+    reader.onerror = () => resolve();
+    reader.readAsDataURL(file);
+  })));
+
+  if(imported > 0){
+    funcarteDB.addMany(cards);
+    currentFuncartes = funcarteDB.load();
+    funcarteStatus.textContent = `✓ ${imported} funcartes importées`;
+    funcarteFile.value = '';
+    setTimeout(()=>{ funcarteStatus.style.display = 'none'; }, 2000);
+  } else {
+    funcarteStatus.textContent = 'Aucune carte valide importée';
+    setTimeout(()=>{ funcarteStatus.style.display = 'none'; }, 3000);
+  }
+});
+
+viewFuncarteBtn.addEventListener('click', ()=>{
+  const db = funcarteDB.getAll();
+  const count = Object.keys(db).length;
+  if(count === 0){
+    alert('Base de données vide');
+    return;
+  }
+  const list = Object.values(db).map(c => `• ${c.name}`).join('\n');
+  alert(`Base de données: ${count} carte(s)\n\n${list}`);
+});
+
+clearFuncarteBtn.addEventListener('click', ()=>{
+  if(confirm('Êtes-vous sûr de vouloir effacer la base de données de funcartes?')){
+    funcarteDB.clear();
+    currentFuncartes = {};
+    alert('Base de données effacée');
+  }
 });
 
 function newGame(){
