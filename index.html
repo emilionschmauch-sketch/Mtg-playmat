@@ -76,8 +76,31 @@ textarea#deckText{width:100%;min-height:90px;padding:8px;border-radius:8px;borde
 
 /* responsive */
 @media (max-width:900px){
-  .layout{flex-direction:column}
-  .battle-wrap{height:50vh}
+  .header{flex-direction:column;align-items:flex-start;}
+  .controls{width:100%;justify-content:flex-start;}
+  .controls > *{flex:1 1 auto;min-width:0;}
+  .layout{flex-direction:column;}
+  .col{min-width:100%;}
+  .battle-wrap{height:50vh;}
+  .row-stats{flex-wrap:wrap;justify-content:flex-start;}
+  .stat{flex:1 1 140px;min-width:120px;}
+  .zone{min-height:120px;}
+  .hand{min-height:90px;}
+}
+
+@media (max-width:640px){
+  .header{gap:6px;}
+  .controls{flex-direction:column;align-items:stretch;}
+  .controls > *{width:100%;}
+  .row-stats{flex-direction:column;align-items:stretch;}
+  .stat{width:100%;min-width:0;}
+  .zone{min-height:110px;}
+  .hand{min-height:80px;}
+  .card{width:70px;height:98px;}
+  .card.small{width:48px;height:64px;}
+  .battle-wrap{height:55vh;}
+  .layout{gap:10px;}
+  .zone-title{font-size:14px;}
 }
 
 /* small helper */
@@ -128,6 +151,7 @@ body.game-over{
     </div>
 
     <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button id="newTurn" class="btn small">Nouveau tour</button>
       <button id="drawX" class="ghost small">Piocher X</button>
       <button id="millX" class="ghost small">Meuler X</button>
       <button id="tutorBtn" class="ghost small">Tutor (nom)</button>
@@ -1169,6 +1193,17 @@ function newGame(){
 /* ===========================
    UI handlers (draw/mill/tutor etc)
    =========================== */
+$('newTurn').addEventListener('click', ()=>{
+  // Untap all cards on battlefield, hand, and tokens
+  const allCards = state.hand.concat(state.battlefield).concat(state.tokens);
+  for(const card of allCards){
+    card.tapped = false;
+  }
+  // Draw 1 card
+  drawX(1);
+  renderAll();
+});
+
 $('drawX').addEventListener('click', ()=>{ const n = parseInt(prompt('Combien piocher ?', '1')); if(!n || n<=0) return; drawX(n); });
 $('millX').addEventListener('click', ()=>{ const n = parseInt(prompt('Combien meuler ?', '1')); if(!n || n<=0) return; millX(n); });
 $('tutorBtn').addEventListener('click', ()=>{ const name = prompt('Nom de la carte'); if(!name) return; tutorByName(name); });
