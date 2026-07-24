@@ -109,14 +109,16 @@ body.game-over{
     <div class="controls">
       <button id="undoBtn" class="ghost small" title="Annuler la dernière action">Undo</button>
       <button id="exportBtn" class="ghost small">Exporter état</button>
+      <input id="importStateFile" type="file" accept=".json" style="display:none" />
+      <button id="importStateBtn" class="ghost small">Importer état</button>
     </div>
   </div>
 
   <div>
-    <label class="muted">Deck (textarea) ou importer (.txt / .csv)</label>
+    <label class="muted">Deck (textarea) ou importer (.txt)</label>
     <textarea id="deckText" placeholder="Ex : 4 Lightning Bolt"></textarea>
     <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
-      <input id="deckFile" type="file" accept=".txt,.csv" />
+      <input id="deckFile" type="file" accept=".txt" />
       <button id="loadDeck" class="btn">Charger Deck</button>
       <span id="loadStatus" class="muted" style="display:none">Chargement…</span>
 
@@ -241,7 +243,8 @@ const deckText = $('deckText'), deckFile = $('deckFile'), loadBtn = $('loadDeck'
       bfCountNode = $('bfCount'), graveCountNode = $('graveCount'), exileCountNode = $('exileCount'),
       errorsDiv = $('errors'),
       funcarteFile = $('funcarteFile'), importFuncarteBtn = $('importFuncartes'), viewFuncarteBtn = $('viewFuncartes'),
-      clearFuncarteBtn = $('clearFuncartes'), funcarteStatus = $('funcarteStatus');
+      clearFuncarteBtn = $('clearFuncartes'), funcarteStatus = $('funcarteStatus'),
+      importStateBtn = $('importStateBtn'), importStateFile = $('importStateFile');
 
 /* ===========================
    FUNCARTES DATABASE (localStorage-based)
@@ -492,6 +495,72 @@ function renderZonesSmall(){
   // library view hidden but we can show small preview if needed
   libraryNode.innerHTML = '';
   // keep library hidden by default (as requested)
+}
+
+function cloneSerializable(value){
+  try { return JSON.parse(JSON.stringify(value)); }
+  catch(e){ return value; }
+}
+
+function buildExportPayload(){
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    state: {
+      deck: (state.deck || []).map(cloneSerializable),
+      library: (state.library || []).map(cloneSerializable),
+      hand: (state.hand || []).map(cloneSerializable),
+      battlefield: (state.battlefield || []).map(cloneSerializable),
+      graveyard: (state.graveyard || []).map(cloneSerializable),
+      exile: (state.exile || []).map(cloneSerializable),
+      commandZone: (state.commandZone || []).map(cloneSerializable),
+      tokensTemplates: (state.tokensTemplates || []).map(cloneSerializable),
+      tokens: (state.tokens || []).map(cloneSerializable),
+      chosenCommander: state.chosenCommander ? cloneSerializable(state.chosenCommander) : null,
+      chosenCommanderId: state.chosenCommanderId || null
+    },
+    ui: {
+      life: parseInt(lifeNode.textContent) || 40,
+      commanderDamage: parseInt($('degat_du_co').textContent) || 0,
+      poison: parseInt(poisonNode.textContent) || 0,
+      handHidden: !!handHidden
+    }
+  };
+}
+
+function restoreImportedState(data){
+  const payload = data && data.state ? data.state : data;
+  if(!payload){ throw new Error('État invalide'); }
+
+  state.deck = (payload.deck || []).map(cloneSerializable);
+  state.library = (payload.library || []).map(cloneSerializable);
+  state.hand = (payload.hand || []).map(cloneSerializable);
+  state.battlefield = (payload.battlefield || []).map(cloneSerializable);
+  state.graveyard = (payload.graveyard || []).map(cloneSerializable);
+  state.exile = (payload.exile || []).map(cloneSerializable);
+  state.commandZone = (payload.commandZone || []).map(cloneSerializable);
+  state.tokensTemplates = (payload.tokensTemplates || []).map(cloneSerializable);
+  state.tokens = (payload.tokens || []).map(cloneSerializable);
+
+  state.chosenCommander = payload.chosenCommander ? cloneSerializable(payload.chosenCommander) : null;
+  state.chosenCommanderId = payload.chosenCommanderId || null;
+
+  if(state.chosenCommanderId){
+    const found = state.commandZone.find(c => c.id === state.chosenCommanderId);
+    if(found){ state.chosenCommander = found; }
+  }
+
+  const ui = (data && data.ui) || {};
+  lifeNode.textContent = String(ui.life ?? 40);
+  $('degat_du_co').textContent = String(ui.commanderDamage ?? 0);
+  poisonNode.textContent = String(ui.poison ?? 0);
+  handHidden = !!ui.handHidden;
+  $('toggleHand').textContent = handHidden ? 'Révéler main' : 'Cacher main';
+
+  undoStack = [];
+  $('undoBtn').disabled = true;
+  updateGameOverDisplay();
+  renderAll();
 }
 
 function updateGameOverDisplay(){
@@ -859,23 +928,18 @@ deckFile.addEventListener('change', (e)=>{
 
 $('loadDeck').addEventListener('click', async ()=>{
   const lines = deckText.value.split('\n').map(l=>l.trim()).filter(Boolean);
-  if(lines.length === 0) return alert('Colle une decklist ou importe un fichier .txt/.csv');
+  if(lines.length === 0) return alert('Colle une decklist ou importe un fichier .txt');
   $('loadStatus').style.display = 'inline';
   errorsDiv.innerHTML = '';
   state.deck = []; state.library = []; state.hand=[]; state.battlefield=[]; state.graveyard=[]; state.exile=[]; state.commandZone=[]; state.tokensTemplates=[]; state.tokens=[];
   const errors = [];
   const tokenIds = new Set();
   for(const rawLine of lines){
-    // support "4,Lightning Bolt" or "4 Lightning Bolt"
-    let qty = 0, name = '';
-    if(rawLine.includes(',')){
-      const parts = rawLine.split(',');
-      qty = parseInt(parts[0]);
-      name = parts.slice(1).join(',').trim();
-    } else {
-      const m = rawLine.match(/^\s*(\d+)\s+(.+)$/);
-      if(m){ qty = parseInt(m[1]); name = m[2]; }
-    }
+    // only plain text format: "nombre nom"
+    const m = rawLine.match(/^\s*(\d+)\s+(.+)$/);
+    if(!m){ errors.push(`Ligne non reconnue: "${rawLine}"`); continue; }
+    const qty = parseInt(m[1]);
+    const name = m[2];
     if(!qty || !name){ errors.push(`Ligne non reconnue: "${rawLine}"`); continue; }
     // fetch scryfall
     const res = await fetchCardByName(name);
@@ -1224,10 +1288,34 @@ renderAll();
    Export state
    =========================== */
 $('exportBtn').addEventListener('click', ()=>{
-  const exportObj = {...state};
+  const exportObj = buildExportPayload();
   const blob = new Blob([JSON.stringify(exportObj,null,2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = 'mtg-state.json'; a.click(); URL.revokeObjectURL(url);
+});
+
+importStateBtn.addEventListener('click', ()=> importStateFile.click());
+importStateFile.addEventListener('change', (e)=>{
+  const file = e.target.files && e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    try{
+      const parsed = JSON.parse(ev.target.result);
+      restoreImportedState(parsed);
+      alert('État importé avec succès');
+    }catch(err){
+      console.error(err);
+      alert('Fichier JSON invalide');
+    } finally {
+      importStateFile.value = '';
+    }
+  };
+  reader.onerror = ()=>{
+    alert('Impossible de lire le fichier');
+    importStateFile.value = '';
+  };
+  reader.readAsText(file);
 });
 
 /* ===========================
