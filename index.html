@@ -478,10 +478,34 @@ const funcarteDB = {
     }
   },
 
+  normalizeName(name) {
+    return (name || '').toLowerCase().trim().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/\s+/g, ' ');
+  },
+
+  findRelatedKey(name, db) {
+    const normalized = this.normalizeName(name);
+    if (!normalized) return null;
+    const entries = Object.keys(db || {});
+    for (const key of entries) {
+      const other = this.normalizeName(key);
+      if (!other) continue;
+      if (key === normalized) continue;
+      if (other.includes(normalized) || normalized.includes(other)) {
+        return key;
+      }
+    }
+    return null;
+  },
+
   async get(name) {
     await this.ready();
     const key = (name || '').toLowerCase().trim();
-    return this._cache[key] || null;
+    const direct = this._cache[key] || null;
+    if (direct) return direct;
+
+    const related = this.findRelatedKey(name, this._cache);
+    if (related) return this._cache[related] || null;
+    return null;
   },
 
   async set(name, imageUrl) {
@@ -505,21 +529,30 @@ const funcarteDB = {
     const db = { ...this._cache };
 
     for (const card of cards) {
-      const key = (card.name || '').toLowerCase().trim();
+      const rawName = card.name || '';
+      const key = this.normalizeName(rawName);
       const existing = db[key];
+      const relatedKey = !existing ? this.findRelatedKey(rawName, db) : null;
+      const targetKey = existing ? key : (relatedKey || key);
 
-      if (!existing) {
-        db[key] = {
-          name: card.name,
+      if (!db[targetKey]) {
+        db[targetKey] = {
+          name: rawName,
           imageUrl: card.imageUrl,
           faces: [card.imageUrl],
           isTokenTemplate: !!card.isTokenTemplate
         };
       } else {
-        existing.faces = existing.faces || [];
-        if (!existing.faces.includes(card.imageUrl)) existing.faces.push(card.imageUrl);
-        existing.imageUrl = existing.faces[0];
-        existing.isTokenTemplate = existing.isTokenTemplate || card.isTokenTemplate;
+        const entry = db[targetKey];
+        entry.name = entry.name || rawName;
+        entry.faces = entry.faces || [];
+        if (!entry.faces.includes(card.imageUrl)) entry.faces.push(card.imageUrl);
+        entry.imageUrl = entry.faces[0];
+        entry.isTokenTemplate = entry.isTokenTemplate || card.isTokenTemplate;
+      }
+
+      if (relatedKey && relatedKey !== targetKey) {
+        delete db[relatedKey];
       }
     }
 
@@ -1232,7 +1265,7 @@ function fileToDataUrl(file){
   });
 }
 
-async function compressImageDataUrl(file, { maxWidth = 320, quality = 0.6 } = {}){
+async function compressImageDataUrl(file, { maxWidth = 720, quality = 0.9 } = {}){
   const dataUrl = await fileToDataUrl(file);
   const img = await new Promise((resolve, reject) => {
     const image = new Image();
@@ -1240,6 +1273,10 @@ async function compressImageDataUrl(file, { maxWidth = 320, quality = 0.6 } = {}
     image.onerror = () => reject(new Error('Image invalide'));
     image.src = dataUrl;
   });
+
+  const mimeType = file.type && file.type.startsWith('image/png') ? 'image/png' : 'image/jpeg';
+  const needsResize = img.width > maxWidth || img.height > Math.round(maxWidth * 1.4);
+  if (!needsResize) return dataUrl;
 
   const canvas = document.createElement('canvas');
   const scale = Math.min(1, maxWidth / Math.max(img.width, 1));
@@ -1249,7 +1286,6 @@ async function compressImageDataUrl(file, { maxWidth = 320, quality = 0.6 } = {}
   const ctx = canvas.getContext('2d');
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-  const mimeType = file.type && file.type.startsWith('image/png') ? 'image/png' : 'image/jpeg';
   return canvas.toDataURL(mimeType, mimeType === 'image/png' ? undefined : quality);
 }
 
@@ -1612,7 +1648,7 @@ importFuncarteBtn.addEventListener('click', async ()=>{
     }
 
     try {
-      const compressedUrl = await compressImageDataUrl(file, { maxWidth: 320, quality: 0.58 });
+      const compressedUrl = await compressImageDataUrl(file, { maxWidth: 720, quality: 0.9 });
       if(name && compressedUrl){
           cards.push({
               name,
