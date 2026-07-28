@@ -159,9 +159,9 @@ body.game-over{
     </div>
 
     <div style="margin-top:12px;border-top:1px solid rgba(255,255,255,0.06);padding-top:12px">
-      <label class="muted">Base de données Funcartes (importer plusieurs fichiers PNG dont le nom du fichier est le nom de la carte)</label>
+      <label class="muted">Base de données Funcartes (importer plusieurs fichiers PNG/JPG dont le nom du fichier est le nom de la carte)</label>
       <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
-        <input id="funcarteFile" type="file" accept="image/png" multiple />
+        <input id="funcarteFile" type="file" accept="image/png,image/jpeg" multiple />
         <button id="importFuncartes" class="btn small">Importer Funcartes</button>
         <button id="viewFuncartes" class="ghost small">Voir BD</button>
         <button id="clearFuncartes" class="ghost small">Effacer BD</button>
@@ -887,11 +887,19 @@ function tutorByName(name){
 /* ===========================
    Scryfall fetch & deck load (supports CSV & TXT)
    =========================== */
+function normalizeCardName(name){
+  let norm = (name||'').replace(/[\u2018\u2019\u201C\u201D]/g, "'").replace(/\u00A0/g,' ').replace(/\s+/g,' ').trim();
+  try{ norm = norm.normalize('NFD').replace(/\p{Diacritic}/gu,''); }catch(e){}
+  return norm;
+}
+
 async function fetchCardByName(name){
   const enc = s => encodeURIComponent(s);
-  
-  // 1. Check local funcartes database first
-  const localCard = funcarteDB.get(name);
+  const norm = normalizeCardName(name);
+  const normKey = norm.toLowerCase();
+
+  // 1. Check local funcartes database first (try normalized key and raw)
+  const localCard = funcarteDB.get(normKey) || funcarteDB.get(norm) || funcarteDB.get(name);
   if(localCard){
     return {
       error: false,
@@ -903,18 +911,44 @@ async function fetchCardByName(name){
       }
     };
   }
-  
-  // 2. If not found locally, fetch from Scryfall
-  try{
-    let r = await fetch(`https://api.scryfall.com/cards/named?exact=${enc(name)}`);
-    let d = await r.json();
-    if(d?.object === 'error'){
-      r = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${enc(name)}`);
+
+  // helper sleep
+  const sleep = (ms) => new Promise(r=>setTimeout(r,ms));
+  const maxAttempts = 3;
+  const exactPhraseQuery = `!\"${norm.replace(/\"/g,'')}\"`;
+
+  for(let attempt=1; attempt<=maxAttempts; attempt++){
+    try{
+      // try exact name
+      let r = await fetch(`https://api.scryfall.com/cards/named?exact=${enc(norm)}`);
+      let d = await r.json();
+      if(d?.object !== 'error') return {error:false, data:d};
+
+      // try fuzzy name
+      r = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${enc(norm)}`);
       d = await r.json();
+      if(d?.object !== 'error') return {error:false, data:d};
+
+      // fallback to exact phrase search
+      r = await fetch(`https://api.scryfall.com/cards/search?q=${enc(exactPhraseQuery)}`);
+      d = await r.json();
+      if(d?.object === 'list' && Array.isArray(d.data) && d.data.length > 0){
+        return {error:false, data:d.data[0]};
+      }
+
+      // fallback to generic search if needed
+      r = await fetch(`https://api.scryfall.com/cards/search?q=${enc(norm)}`);
+      d = await r.json();
+      if(d?.object === 'list' && Array.isArray(d.data) && d.data.length > 0){
+        return {error:false, data:d.data[0]};
+      }
+
+      return {error:true, message: (d && (d.details || d.message)) || 'not found'};
+    }catch(e){
+      if(attempt < maxAttempts){ await sleep(200 * attempt); continue; }
+      return {error:true, message: e.message || 'fetch error'};
     }
-    if(d?.object === 'error') return {error:true, message:d?.details || 'not found'};
-    return {error:false, data:d};
-  }catch(e){ return {error:true, message:e.message || 'fetch error'}; }
+  }
 }
 
 function chooseImageFromData(data){
@@ -1059,9 +1093,15 @@ importFuncarteBtn.addEventListener('click', async ()=>{
   funcarteStatus.style.display = 'inline';
   funcarteStatus.textContent = 'Importation…';
 
-  const validFiles = files.filter(f => f.type === 'image/png' || f.name.toLowerCase().endsWith('.png'));
+  const validFiles = files.filter(f =>
+    f.type === 'image/png' ||
+    f.type === 'image/jpeg' ||
+    f.name.toLowerCase().endsWith('.png') ||
+    f.name.toLowerCase().endsWith('.jpg') ||
+    f.name.toLowerCase().endsWith('.jpeg')
+  );
   if(validFiles.length === 0){
-    funcarteStatus.textContent = 'Aucun fichier PNG valide trouvé';
+    funcarteStatus.textContent = 'Aucun fichier PNG/JPG valide trouvé';
     setTimeout(()=>{ funcarteStatus.style.display = 'none'; }, 3000);
     return;
   }
@@ -1073,7 +1113,7 @@ importFuncarteBtn.addEventListener('click', async ()=>{
     const reader = new FileReader();
     reader.onload = (ev) => {
       const imageUrl = ev.target.result;
-      const name = file.name.replace(/\.png$/i, '').trim();
+      const name = file.name.replace(/\.(png|jpe?g)$/i, '').trim();
       if(name && imageUrl){
         cards.push({name, imageUrl});
         imported++;
