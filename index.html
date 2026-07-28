@@ -297,13 +297,33 @@ const funcarteDB = {
   },
   set(name, imageUrl) {
     const db = this.load();
-    db[(name || '').toLowerCase().trim()] = { name, imageUrl };
+    const key = (name || '').toLowerCase().trim();
+    const existing = db[key];
+    if(!existing){
+      db[key] = { name, imageUrl, faces: [imageUrl] };
+    } else {
+      // merge as faces if image different
+      db[key].name = name || db[key].name;
+      db[key].faces = db[key].faces || (db[key].imageUrl ? [db[key].imageUrl] : []);
+      if(!db[key].faces.includes(imageUrl)) db[key].faces.push(imageUrl);
+      // keep imageUrl as first face for backwards compatibility
+      db[key].imageUrl = db[key].faces[0];
+    }
     this.save(db);
   },
   addMany(cards) {
     const db = this.load();
     for (const card of cards) {
-      db[(card.name || '').toLowerCase().trim()] = card;
+      const key = (card.name || '').toLowerCase().trim();
+      const existing = db[key];
+      if(!existing){
+        db[key] = { name: card.name, imageUrl: card.imageUrl, faces: [card.imageUrl] };
+      } else {
+        existing.faces = existing.faces || (existing.imageUrl ? [existing.imageUrl] : []);
+        if(!existing.faces.includes(card.imageUrl)) existing.faces.push(card.imageUrl);
+        existing.imageUrl = existing.faces[0];
+        existing.name = existing.name || card.name;
+      }
     }
     this.save(db);
   },
@@ -901,6 +921,11 @@ async function fetchCardByName(name){
   // 1. Check local funcartes database first (try normalized key and raw)
   const localCard = funcarteDB.get(normKey) || funcarteDB.get(norm) || funcarteDB.get(name);
   if(localCard){
+    // if multiple faces stored, mimic Scryfall double-faced structure
+    if(Array.isArray(localCard.faces) && localCard.faces.length > 1){
+      const card_faces = localCard.faces.map((img, idx)=>({ name: localCard.name, image_uris: { normal: img } }));
+      return { error:false, data: { name: localCard.name, card_faces, object: 'custom_funcard', isFuncard: true } };
+    }
     return {
       error: false,
       data: {
@@ -1143,7 +1168,7 @@ viewFuncarteBtn.addEventListener('click', ()=>{
     alert('Base de données vide');
     return;
   }
-  const list = Object.values(db).map(c => `• ${c.name}`).join('\n');
+  const list = Object.values(db).map(c => `• ${c.name}${Array.isArray(c.faces) && c.faces.length>1 ? ` (${c.faces.length} faces)` : ''}`).join('\n');
   alert(`Base de données: ${count} carte(s)\n\n${list}`);
 });
 
