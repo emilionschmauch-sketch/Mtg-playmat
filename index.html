@@ -46,16 +46,52 @@ textarea#deckText{width:100%;min-height:90px;padding:8px;border-radius:8px;borde
   z-index: 2000;
 }
 #zoomOverlay img {
-  width: min(88vw, 360px);
-  max-width: 360px;
-  height: auto;
-  max-height: 90vh;
-  object-fit: contain;
+  max-width: 90%;
+  max-height: 90%;
   border: 4px solid white;
-  border-radius: 12px;
-  box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+  border-radius: 8px;
 }
 #zoomOverlay.hidden { display: none; }
+
+.reveal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 8, 12, 0.86);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 2100;
+}
+.reveal-panel {
+  width: min(92vw, 380px);
+  background: #071419;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.35);
+}
+.reveal-image {
+  width: min(82vw, 280px);
+  aspect-ratio: 2.5 / 3.5;
+  object-fit: cover;
+  border-radius: 10px;
+  background: #0e1a22;
+}
+.reveal-name {
+  text-align: center;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.reveal-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
 .funcarte-view {
   position: fixed;
@@ -125,7 +161,7 @@ textarea#deckText{width:100%;min-height:90px;padding:8px;border-radius:8px;borde
 .card.small{width:var(--small-w);height:var(--small-h)}
 .card.tapped{transform:rotate(90deg)}
 .counters{position:absolute;left:6px;bottom:6px;background:rgba(0,0,0,0.45);padding:3px 6px;border-radius:6px;font-size:12px}
-.selected{outline:3px solid rgba(179, 22, 22, 0.897)}
+.selected{outline:3px solid rgba(255,255,255,0.06)}
 /* battlefield bigger and scrollable internal, clamp drag inside it */
 .battle-wrap{min-height:520px;height:calc(60vh);background:linear-gradient(180deg,#073b34,#052b24);border-radius:8px;overflow:hidden;position:relative}
 .battle-area{position:relative;width:100%;height:100%;overflow:hidden}
@@ -274,7 +310,7 @@ body.game-over{
     <!-- right column -->
     <div class="col">
       <div class="zone" id="commandWrap" style="display:none">
-        <div class="zone-title">Command Zone</div>
+        <div class="zone-title">Zone de commandement</div>
         <div id="commandZone" class="zone-list"></div>
       </div>
 
@@ -307,8 +343,7 @@ const state = {
   exile: [],
   commandZone: [],
   tokensTemplates: [],
-  tokens: [],    // token objects (displayed on battlefield)
-  selectedCardIds: []
+  tokens: []     // token objects (displayed on battlefield)
 };
 // chosen commander remembered when loading a deck
 state.chosenCommander = null;
@@ -483,34 +518,10 @@ const funcarteDB = {
     }
   },
 
-  normalizeName(name) {
-    return (name || '').toLowerCase().trim().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/\s+/g, ' ');
-  },
-
-  findRelatedKey(name, db) {
-    const normalized = this.normalizeName(name);
-    if (!normalized) return null;
-    const entries = Object.keys(db || {});
-    for (const key of entries) {
-      const other = this.normalizeName(key);
-      if (!other) continue;
-      if (key === normalized) continue;
-      if (other.includes(normalized) || normalized.includes(other)) {
-        return key;
-      }
-    }
-    return null;
-  },
-
   async get(name) {
     await this.ready();
     const key = (name || '').toLowerCase().trim();
-    const direct = this._cache[key] || null;
-    if (direct) return direct;
-
-    const related = this.findRelatedKey(name, this._cache);
-    if (related) return this._cache[related] || null;
-    return null;
+    return this._cache[key] || null;
   },
 
   async set(name, imageUrl) {
@@ -534,30 +545,21 @@ const funcarteDB = {
     const db = { ...this._cache };
 
     for (const card of cards) {
-      const rawName = card.name || '';
-      const key = this.normalizeName(rawName);
+      const key = (card.name || '').toLowerCase().trim();
       const existing = db[key];
-      const relatedKey = !existing ? this.findRelatedKey(rawName, db) : null;
-      const targetKey = existing ? key : (relatedKey || key);
 
-      if (!db[targetKey]) {
-        db[targetKey] = {
-          name: rawName,
+      if (!existing) {
+        db[key] = {
+          name: card.name,
           imageUrl: card.imageUrl,
           faces: [card.imageUrl],
           isTokenTemplate: !!card.isTokenTemplate
         };
       } else {
-        const entry = db[targetKey];
-        entry.name = entry.name || rawName;
-        entry.faces = entry.faces || [];
-        if (!entry.faces.includes(card.imageUrl)) entry.faces.push(card.imageUrl);
-        entry.imageUrl = entry.faces[0];
-        entry.isTokenTemplate = entry.isTokenTemplate || card.isTokenTemplate;
-      }
-
-      if (relatedKey && relatedKey !== targetKey) {
-        delete db[relatedKey];
+        existing.faces = existing.faces || [];
+        if (!existing.faces.includes(card.imageUrl)) existing.faces.push(card.imageUrl);
+        existing.imageUrl = existing.faces[0];
+        existing.isTokenTemplate = existing.isTokenTemplate || card.isTokenTemplate;
       }
     }
 
@@ -676,46 +678,6 @@ function findCardById(id){
   }
   return null;
 }
-function findCardZone(id){
-  for(const z of ['deck','library','hand','battlefield','graveyard','exile','commandZone','tokens']){
-    const arr = state[z];
-    if(!arr) continue;
-    if(arr.find(c=>c.id===id)) return z;
-  }
-  return null;
-}
-function getSelectedCards(){
-  const ids = Array.from(new Set((state.selectedCardIds || []).filter(Boolean)));
-  return ids.map(id => findCardById(id)).filter(Boolean);
-}
-function clearSelection(){ state.selectedCardIds = []; }
-function getSelectionForCard(card){
-  const selected = getSelectedCards();
-  if (selected.length > 0 && selected.some(c => c.id === card.id)) return selected;
-  return [card];
-}
-function toggleCardSelection(card){
-  if(!card) return false;
-  const ids = Array.from(new Set((state.selectedCardIds || []).filter(Boolean)));
-  const isSelected = ids.includes(card.id);
-  state.selectedCardIds = isSelected ? ids.filter(id=>id!==card.id) : ids.concat(card.id);
-  renderAll();
-  return true;
-}
-function clearSelectionIfBackgroundClick(event){
-  if (event.target.closest('.card')) return;
-  clearSelection();
-  renderAll();
-}
-function applyToSelectedCards(callback){
-  const cards = getSelectedCards();
-  if(cards.length === 0) return false;
-  cards.forEach(callback);
-  state.selectedCardIds = [];
-  renderAll();
-  closeMenu();
-  return true;
-}
 function removeCardById(id){
   ['library','hand','battlefield','graveyard','exile','commandZone','tokens','deck'].forEach(z=>{
     const arr = state[z];
@@ -740,8 +702,7 @@ function updateCounts(){
 
 function makeCardElement(card){
   const el = document.createElement('div');
-  const isSelected = (state.selectedCardIds || []).includes(card.id);
-  el.className = 'card' + (card.isToken ? ' token' : '') + (card.tapped ? ' tapped' : '') + (isSelected ? ' selected' : '');
+  el.className = 'card' + (card.isToken ? ' token' : '') + (card.tapped ? ' tapped' : '');
   el.style.backgroundImage = card.image ? `url(${card.image})` : 'linear-gradient(90deg,#444,#666)';
   el.dataset.id = card.id;
   el.dataset.name = card.name || '';
@@ -767,7 +728,6 @@ function renderHand(){
     el.classList.toggle('small', false);
     // event handlers
     el.addEventListener('click', ()=>{ moveCardById(c.id, 'hand', 'battlefield'); });
-    el.addEventListener('dblclick', ()=>{ toggleCardSelection(c); });
     el.addEventListener('contextmenu', (e)=>{ e.preventDefault(); openContextMenuForCard(e, c, 'hand'); });
     addLongPress(el, (e)=> openContextMenuForCard(e, c, 'hand'));
     renderCountersOnEl(el, c);
@@ -791,15 +751,10 @@ function renderBattlefield(){
     el.style.top = (c.y ?? 20) + 'px';
     el.dataset.id = c.id;
     // interactions
-    el.addEventListener('click', ()=>{ toggleCardSelection(c); });
     el.addEventListener('contextmenu', (e)=>{ e.preventDefault(); openContextMenuForCard(e, c, c.isToken ? 'tokens' : 'battlefield'); });
     addLongPress(el, (e)=> openContextMenuForCard(e, c, c.isToken ? 'tokens' : 'battlefield'));
     // double click tap
-    el.addEventListener('dblclick', ()=>{
-      const targets = getSelectionForCard(c);
-      targets.forEach(card => { card.tapped = !card.tapped; });
-      renderAll();
-    });
+    el.addEventListener('dblclick', ()=>{ c.tapped = !c.tapped; renderAll(); });
     // drag within bounds
     attachPointerDrag(el, c, wrap);
     renderCountersOnEl(el, c);
@@ -808,16 +763,10 @@ function renderBattlefield(){
 }
 
 function renderZonesSmall(){
-  [handNode, graveNode, exileNode, commandNode, battlefieldNode].forEach(node => {
-    node.removeEventListener('click', clearSelectionIfBackgroundClick);
-    node.addEventListener('click', clearSelectionIfBackgroundClick);
-  });
-
   // graveyard
   graveNode.innerHTML = '';
   for(const c of state.graveyard){
     const el = makeCardElement(c); el.classList.add('small');
-    el.addEventListener('click', ()=>{ toggleCardSelection(c); });
     el.addEventListener('contextmenu', (e)=>{ e.preventDefault(); openContextMenuForCard(e, c, 'graveyard'); });
     addLongPress(el, (e)=> openContextMenuForCard(e, c, 'graveyard'));
     renderCountersOnEl(el, c);
@@ -827,7 +776,6 @@ function renderZonesSmall(){
   exileNode.innerHTML = '';
   for(const c of state.exile){
     const el = makeCardElement(c); el.classList.add('small');
-    el.addEventListener('click', ()=>{ toggleCardSelection(c); });
     el.addEventListener('contextmenu', (e)=>{ e.preventDefault(); openContextMenuForCard(e, c, 'exile'); });
     addLongPress(el, (e)=> openContextMenuForCard(e, c, 'exile'));
     renderCountersOnEl(el, c);
@@ -837,7 +785,6 @@ function renderZonesSmall(){
   commandNode.innerHTML = '';
   for(const c of state.commandZone){
     const el = makeCardElement(c);
-    el.addEventListener('click', ()=>{ toggleCardSelection(c); });
     el.addEventListener('contextmenu', (e)=>{ e.preventDefault(); openContextMenuForCard(e, c, 'commandZone'); });
     addLongPress(el, (e)=> openContextMenuForCard(e, c, 'commandZone'));
     renderCountersOnEl(el, c);
@@ -1018,6 +965,8 @@ function setCardFaceVisibility(card, faceDown){
       delete card._faceUpImage;
     }
   }
+  renderAll();
+  closeMenu();
 }
 
 function openContextMenuForCard(event, cardObj, fromZone){
@@ -1031,12 +980,6 @@ function openContextMenuForCard(event, cardObj, fromZone){
   document.getElementById('zoomOverlay').onclick = ()=> {
     document.getElementById('zoomOverlay').classList.add('hidden');
   };
-
-  const selectedCards = getSelectedCards();
-  const targetCards = selectedCards.length > 0 ? selectedCards : [cardObj];
-  if (selectedCards.length > 0 && !selectedCards.some(c => c.id === cardObj.id)) {
-    state.selectedCardIds = Array.from(new Set([cardObj.id, ...selectedCards.map(c => c.id)]));
-  }
 
   // Position the menu next to the enlarged card, not over it
   const zoomRect = zoomImg.getBoundingClientRect();
@@ -1109,20 +1052,14 @@ function openContextMenuForCard(event, cardObj, fromZone){
   // Move targets
   const addMoveBtn = (label, dest) => {
     const b = document.createElement('button'); b.textContent = label;
-    b.addEventListener('click', ()=>{
-      const cards = getSelectedCards();
-      const targets = cards.length > 0 ? cards : [cardObj];
-      targets.forEach(c => moveCardById(c.id, findCardZone(c.id) || fromZone, dest));
-      renderAll();
-      closeMenu();
-    });
+    b.addEventListener('click', ()=>{ moveCardById(cardObj.id, fromZone, dest); closeMenu(); });
     items.appendChild(b);
   };
   addMoveBtn('→ Main','hand');
   addMoveBtn('→ Champ','battlefield');
   addMoveBtn('→ Cimetière','graveyard');
   addMoveBtn('→ Exil','exile');
-  addMoveBtn('→ Command Zone','commandZone');
+  addMoveBtn('→ Zone de commandement','commandZone');
   addMoveBtn('Bibliothèque (dessus)','libraryTop');
   addMoveBtn('Bibliothèque (dessous)','libraryBottom');
   if(isDoubleFaced(cardObj)){
@@ -1132,11 +1069,13 @@ function openContextMenuForCard(event, cardObj, fromZone){
     transformBtn.textContent = "Transformer";
 
     transformBtn.addEventListener("click", ()=>{
-        const cards = getSelectedCards();
-        const targets = cards.length > 0 ? cards : [cardObj];
-        targets.forEach(c => transformCard(c));
+
+        transformCard(cardObj);
+
         renderAll();
+
         closeMenu();
+
     });
 
     items.appendChild(transformBtn);
@@ -1148,30 +1087,14 @@ function openContextMenuForCard(event, cardObj, fromZone){
   if (faceToggleZones.includes(fromZone)) {
     const faceToggleBtn = document.createElement('button');
     faceToggleBtn.textContent = cardObj.isFaceDown ? 'Face visible' : 'Face cachée';
-    faceToggleBtn.addEventListener('click', ()=>{
-      const cards = getSelectedCards();
-      const targets = cards.length > 0 ? cards : [cardObj];
-      targets.forEach(c => setCardFaceVisibility(c, !c.isFaceDown));
-      renderAll();
-      closeMenu();
-    });
+    faceToggleBtn.addEventListener('click', ()=>{ setCardFaceVisibility(cardObj, !cardObj.isFaceDown); });
     items.appendChild(faceToggleBtn);
     items.appendChild(document.createElement('hr'));
   }
 
   // Copy/token
   const copyBtn = document.createElement('button'); copyBtn.textContent = 'Créer copie/token';
-  copyBtn.addEventListener('click', ()=>{
-    const cards = getSelectedCards();
-    const targets = cards.length > 0 ? cards : [cardObj];
-    targets.forEach(c => {
-      const copy = shallowCopyCard(c);
-      state.tokens.push(copy);
-      pushUndo({type:'create', data:{cardId:copy.id, to:'tokens'}});
-    });
-    renderAll();
-    closeMenu();
-  });
+  copyBtn.addEventListener('click', ()=>{ const copy = shallowCopyCard(cardObj); state.tokens.push(copy); pushUndo({type:'create', data:{cardId:copy.id, to:'tokens'}}); renderAll(); closeMenu(); });
   items.appendChild(copyBtn);
 
   items.appendChild(document.createElement('hr'));
@@ -1180,7 +1103,7 @@ function openContextMenuForCard(event, cardObj, fromZone){
   const addPlusRow = document.createElement('div'); addPlusRow.className='row';
   const plusInput = document.createElement('input'); plusInput.type='number'; plusInput.min='1'; plusInput.value='1'; plusInput.placeholder='x';
   const plusBtn = document.createElement('button'); plusBtn.textContent = 'Ajouter +1/+1';
-  plusBtn.addEventListener('click', ()=>{ const n = Math.max(1, parseInt(plusInput.value)||1); const cards = getSelectedCards(); const targets = cards.length > 0 ? cards : [cardObj]; targets.forEach(c => { c.counters['+1/+1'] = (c.counters['+1/+1']||0) + n; pushUndo({type:'counterAdd', data:{cardId:c.id, key:'+1/+1', amount:n}}); }); renderAll(); closeMenu(); });
+  plusBtn.addEventListener('click', ()=>{ const n = Math.max(1, parseInt(plusInput.value)||1); cardObj.counters['+1/+1'] = (cardObj.counters['+1/+1']||0) + n; pushUndo({type:'counterAdd', data:{cardId:cardObj.id, key:'+1/+1', amount:n}}); renderAll(); closeMenu(); });
   addPlusRow.appendChild(plusInput); addPlusRow.appendChild(plusBtn); items.appendChild(addPlusRow);
 
   // custom marker
@@ -1188,7 +1111,7 @@ function openContextMenuForCard(event, cardObj, fromZone){
   const customName = document.createElement('input'); customName.placeholder='Nom marqueur';
   const customNum = document.createElement('input'); customNum.type='number'; customNum.min='1'; customNum.value='1'; customNum.style.width='72px';
   const customBtn = document.createElement('button'); customBtn.textContent='Ajouter';
-  customBtn.addEventListener('click', ()=>{ const k = (customName.value||'').trim(); if(!k) { alert('Nom requis'); return; } const n = Math.max(1, parseInt(customNum.value)||1); const cards = getSelectedCards(); const targets = cards.length > 0 ? cards : [cardObj]; targets.forEach(c => { c.counters[k] = (c.counters[k]||0) + n; pushUndo({type:'counterAdd', data:{cardId:c.id, key:k, amount:n}}); }); renderAll(); closeMenu(); });
+  customBtn.addEventListener('click', ()=>{ const k = (customName.value||'').trim(); if(!k) { alert('Nom requis'); return; } const n = Math.max(1, parseInt(customNum.value)||1); cardObj.counters[k] = (cardObj.counters[k]||0) + n; pushUndo({type:'counterAdd', data:{cardId:cardObj.id, key:k, amount:n}}); renderAll(); closeMenu(); });
   customRow.appendChild(customName); customRow.appendChild(customNum); customRow.appendChild(customBtn);
   items.appendChild(customRow);
 
@@ -1200,17 +1123,11 @@ function openContextMenuForCard(event, cardObj, fromZone){
       const row = document.createElement('div'); row.className='row';
       const num = document.createElement('input'); num.type='number'; num.min='1'; num.value='1'; num.style.width='72px';
       const btn = document.createElement('button'); btn.textContent = `Retirer ${k}`;
-      btn.addEventListener('click', ()=>{ const n = Math.max(1, parseInt(num.value)||1); const cards = getSelectedCards(); const targets = cards.length > 0 ? cards : [cardObj]; targets.forEach(c => { const prev = (c.counters[k]||0); const removed = Math.min(prev, n); c.counters[k] = prev - removed; if(c.counters[k] <= 0) delete c.counters[k]; pushUndo({type:'counterRemove', data:{cardId:c.id, key:k, amount:removed}}); }); renderAll(); closeMenu(); });
+      btn.addEventListener('click', ()=>{ const n = Math.max(1, parseInt(num.value)||1); const prev = (cardObj.counters[k]||0); const removed = Math.min(prev, n); cardObj.counters[k] = prev - removed; if(cardObj.counters[k] <= 0) delete cardObj.counters[k]; pushUndo({type:'counterRemove', data:{cardId:cardObj.id, key:k, amount:removed}}); renderAll(); closeMenu(); });
       row.appendChild(num); row.appendChild(btn); items.appendChild(row);
     });
   }
 
-  // if in command zone, allow exit
-  if(fromZone === 'commandZone'){
-    const exitBtn = document.createElement('button'); exitBtn.textContent = 'Sortir de Command Zone → Main';
-    exitBtn.addEventListener('click', ()=>{ const cards = getSelectedCards(); const targets = cards.length > 0 ? cards : [cardObj]; targets.forEach(c => moveCardById(c.id, 'commandZone', 'hand')); renderAll(); closeMenu(); });
-    items.appendChild(exitBtn);
-  }
 
   menu.appendChild(items);
   document.body.appendChild(menu);
@@ -1256,6 +1173,7 @@ function findAndRemoveById(id){
 function moveCardById(cardId, fromZone, toZone, isUndo=false, fromIndex){
   // find card object and remove from its current array
   const card = findAndRemoveById(cardId);
+  card.tapped=false;
   if(!card) return;
   // destination
   let targetArr;
@@ -1349,7 +1267,7 @@ function fileToDataUrl(file){
   });
 }
 
-async function compressImageDataUrl(file, { maxWidth = 720, quality = 0.9 } = {}){
+async function compressImageDataUrl(file, { maxWidth = 320, quality = 0.6 } = {}){
   const dataUrl = await fileToDataUrl(file);
   const img = await new Promise((resolve, reject) => {
     const image = new Image();
@@ -1357,10 +1275,6 @@ async function compressImageDataUrl(file, { maxWidth = 720, quality = 0.9 } = {}
     image.onerror = () => reject(new Error('Image invalide'));
     image.src = dataUrl;
   });
-
-  const mimeType = file.type && file.type.startsWith('image/png') ? 'image/png' : 'image/jpeg';
-  const needsResize = img.width > maxWidth || img.height > Math.round(maxWidth * 1.4);
-  if (!needsResize) return dataUrl;
 
   const canvas = document.createElement('canvas');
   const scale = Math.min(1, maxWidth / Math.max(img.width, 1));
@@ -1370,6 +1284,7 @@ async function compressImageDataUrl(file, { maxWidth = 720, quality = 0.9 } = {}
   const ctx = canvas.getContext('2d');
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
+  const mimeType = file.type && file.type.startsWith('image/png') ? 'image/png' : 'image/jpeg';
   return canvas.toDataURL(mimeType, mimeType === 'image/png' ? undefined : quality);
 }
 
@@ -1732,7 +1647,7 @@ importFuncarteBtn.addEventListener('click', async ()=>{
     }
 
     try {
-      const compressedUrl = await compressImageDataUrl(file, { maxWidth: 720, quality: 0.9 });
+      const compressedUrl = await compressImageDataUrl(file, { maxWidth: 320, quality: 0.58 });
       if(name && compressedUrl){
           cards.push({
               name,
@@ -1923,7 +1838,77 @@ $('newTurn').addEventListener('click', ()=>{
 $('drawX').addEventListener('click', ()=>{ const n = parseInt(prompt('Combien piocher ?', '1')); if(!n || n<=0) return; drawX(n); });
 $('millX').addEventListener('click', ()=>{ const n = parseInt(prompt('Combien meuler ?', '1')); if(!n || n<=0) return; millX(n); });
 $('tutorBtn').addEventListener('click', ()=>{ const name = prompt('Nom de la carte'); if(!name) return; tutorByName(name); });
-$('revealTop').addEventListener('click', ()=>{ if(state.library.length === 0) return alert('Bibliothèque vide'); alert('Carte du dessus : ' + (state.library[0].name || '(sans nom)')); });
+$('revealTop').addEventListener('click', ()=>{
+  if(state.library.length === 0) return alert('Bibliothèque vide');
+  const overlay = document.createElement('div');
+  overlay.className = 'reveal-overlay';
+  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) overlay.remove(); });
+
+  const panel = document.createElement('div');
+  panel.className = 'reveal-panel';
+
+  const title = document.createElement('div');
+  title.className = 'muted';
+  title.textContent = 'Carte du dessus';
+
+  const name = document.createElement('div');
+  name.className = 'reveal-name';
+
+  const img = document.createElement('img');
+  img.className = 'reveal-image';
+  img.alt = 'Carte révélée';
+  img.onerror = ()=>{ img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='; };
+
+  const nav = document.createElement('div');
+  nav.className = 'reveal-nav';
+
+  const prevBtn = document.createElement('button');
+  prevBtn.textContent = '←';
+  prevBtn.className = 'ghost small';
+  const countLabel = document.createElement('span');
+  countLabel.className = 'muted';
+  const nextBtn = document.createElement('button');
+  nextBtn.textContent = '→';
+  nextBtn.className = 'ghost small';
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'ghost small';
+  closeBtn.textContent = 'Fermer';
+
+  let index = 0;
+  const render = () => {
+    const card = state.library[index];
+    if(!card){ overlay.remove(); return; }
+    name.textContent = card.name || '(sans nom)';
+    img.src = card.image || '';
+    countLabel.textContent = `${index + 1}/${state.library.length}`;
+    prevBtn.disabled = index <= 0;
+    nextBtn.disabled = index >= state.library.length - 1;
+  };
+
+  prevBtn.addEventListener('click', ()=>{ if(index > 0){ index--; render(); } });
+  nextBtn.addEventListener('click', ()=>{ if(index < state.library.length - 1){ index++; render(); } });
+  closeBtn.addEventListener('click', ()=> overlay.remove());
+
+  const onKey = (e)=>{
+    if(e.key === 'ArrowLeft'){ prevBtn.click(); }
+    else if(e.key === 'ArrowRight'){ nextBtn.click(); }
+    else if(e.key === 'Escape'){ overlay.remove(); document.removeEventListener('keydown', onKey); }
+  };
+  document.addEventListener('keydown', onKey);
+
+  nav.appendChild(prevBtn);
+  nav.appendChild(countLabel);
+  nav.appendChild(nextBtn);
+
+  panel.appendChild(title);
+  panel.appendChild(name);
+  panel.appendChild(img);
+  panel.appendChild(nav);
+  panel.appendChild(closeBtn);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+  render();
+});
 $('shuffleLib').addEventListener('click', ()=>{ state.library = shuffleArray(state.library); renderAll(); });
 
 $('lifePlus').addEventListener('click', ()=>{
@@ -1972,10 +1957,8 @@ function createTokenFromTemplate(t){
     id: uid('token'),
     name: t.name,
     image: t.image,
-    raw: t.raw || null,
     counters: {},
     tapped: false,
-    face: 0,
     isToken: true,
     x: 24 + Math.random() * 140,
     y: 24 + Math.random() * 140
