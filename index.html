@@ -245,8 +245,6 @@ body.game-over{
       <span id="loadStatus" class="muted" style="display:none">Chargement…</span>
 
       <button id="newGame" class="btn">Nouvelle partie</button>
-      <button id="shuffleLib" class="btn">Mélanger</button>
-      <button id="toggleHand" class="ghost small">Cacher main</button>
     </div>
 
     <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -255,6 +253,8 @@ body.game-over{
       <button id="millX" class="ghost small">Meuler X</button>
       <button id="tutorBtn" class="ghost small">Tutor (nom)</button>
       <button id="revealTop" class="ghost small">Révéler dessus</button>
+      <button id="shuffleLib" class="ghost small">Mélanger</button>
+      <button id="toggleHand" class="ghost small">Cacher main</button>
     </div>
 
     <div style="margin-top:12px;border-top:1px solid rgba(255,255,255,0.06);padding-top:12px">
@@ -1747,6 +1747,11 @@ clearFuncarteBtn.addEventListener('click', async ()=>{
 });
 
 function newGame(){
+  if(confirm("Êtes-vous sûr de vouloir commencer une nouvelle partie ? Cela réinitialisera l'état actuel du jeu.")){
+    resetGameState();
+  }
+}
+function resetGameState(){
   // restore the commander chosen at deck load (if any)
   const savedCommanderId = state.chosenCommanderId || (state.chosenCommander && state.chosenCommander.id) || null;
   const savedCommanderRef = state.chosenCommander || null;
