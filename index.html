@@ -252,6 +252,7 @@ body.game-over{
       <button id="drawX" class="ghost small">Piocher X</button>
       <button id="millX" class="ghost small">Meuler X</button>
       <button id="tutorBtn" class="ghost small">Tutor (nom)</button>
+      <button id="addToBoardBtn" class="ghost small">Ajouter au board</button>
       <button id="revealTop" class="ghost small">Révéler dessus</button>
       <button id="shuffleLib" class="ghost small">Mélanger</button>
       <button id="toggleHand" class="ghost small">Cacher main</button>
@@ -1006,46 +1007,77 @@ function openContextMenuForCard(event, cardObj, fromZone){
 
   const items = document.createElement('div'); items.className = 'menu-items';
 
-  if (fromZone === 'hand') {
-    const handNav = document.createElement('div'); handNav.className = 'row';
+  const zoneNavTargets = {
+    hand: state.hand || [],
+    graveyard: state.graveyard || [],
+    exile: state.exile || [],
+    battlefield: state.battlefield || [],
+    tokens: state.tokens || [],
+    commandZone: state.commandZone || []
+  };
+
+  const resolveZoneCards = (zone, item) => {
+    if (zone === 'tokens') return state.tokens || [];
+    if (zone === 'battlefield' && item && item.isToken) return state.tokens || [];
+    return zoneNavTargets[zone] || [];
+  };
+
+  const zoneCards = resolveZoneCards(fromZone, cardObj);
+  if (zoneCards.length > 1) {
+    const zoneNav = document.createElement('div'); zoneNav.className = 'row';
     const prevBtn = document.createElement('button'); prevBtn.textContent = '←';
     const nextBtn = document.createElement('button'); nextBtn.textContent = '→';
-    const currentLabel = document.createElement('span'); currentLabel.className = 'muted'; currentLabel.textContent = 'Main';
+    const currentLabel = document.createElement('span'); currentLabel.className = 'muted'; currentLabel.textContent = `${fromZone === 'tokens' ? 'Jetons' : fromZone}`;
 
-    const handCards = state.hand || [];
-    let currentIndex = handCards.findIndex(c => c.id === cardObj.id);
+    let currentIndex = zoneCards.findIndex(c => c.id === cardObj.id);
     if (currentIndex < 0) currentIndex = 0;
 
     const updateNavLabel = () => {
-      const total = handCards.length || 1;
+      const total = zoneCards.length || 1;
       currentLabel.textContent = `${currentIndex + 1}/${total}`;
     };
 
-    const openHandCard = (index) => {
-      const target = handCards[index];
+    const getCardElementRect = (target) => {
+      const selector = '[data-id="' + String(target.id).replace(/"/g, '\\"') + '"]';
+      const targetEl = document.querySelector(selector);
+      if (targetEl && typeof targetEl.getBoundingClientRect === 'function') {
+        return targetEl.getBoundingClientRect();
+      }
+      if (event && event.currentTarget && typeof event.currentTarget.getBoundingClientRect === 'function') {
+        return event.currentTarget.getBoundingClientRect();
+      }
+      return { left: 0, top: 0, right: 0, bottom: 0 };
+    };
+
+    const openZoneCard = (index) => {
+      const target = zoneCards[index];
       if (!target) return;
-      const targetEvent = { currentTarget: { getBoundingClientRect: () => event.currentTarget.getBoundingClientRect() } };
-      openContextMenuForCard(targetEvent, target, 'hand');
+      const targetEvent = {
+        currentTarget: {
+          getBoundingClientRect: () => getCardElementRect(target)
+        }
+      };
+      openContextMenuForCard(targetEvent, target, fromZone);
     };
 
     prevBtn.addEventListener('click', () => {
-      const index = (currentIndex - 1 + handCards.length) % handCards.length;
+      const index = (currentIndex - 1 + zoneCards.length) % zoneCards.length;
       currentIndex = index;
       updateNavLabel();
-      openHandCard(index);
+      openZoneCard(index);
     });
     nextBtn.addEventListener('click', () => {
-      const index = (currentIndex + 1) % handCards.length;
+      const index = (currentIndex + 1) % zoneCards.length;
       currentIndex = index;
       updateNavLabel();
-      openHandCard(index);
+      openZoneCard(index);
     });
 
     updateNavLabel();
-    handNav.appendChild(prevBtn);
-    handNav.appendChild(currentLabel);
-    handNav.appendChild(nextBtn);
-    items.appendChild(handNav);
+    zoneNav.appendChild(prevBtn);
+    zoneNav.appendChild(currentLabel);
+    zoneNav.appendChild(nextBtn);
+    items.appendChild(zoneNav);
     items.appendChild(document.createElement('hr'));
   }
 
@@ -1247,6 +1279,33 @@ function tutorByName(name){
   const idx2 = state.library.findIndex(c=> (c.name||'').toLowerCase().includes(name.toLowerCase()));
   if(idx2 > -1){ state.hand.push(state.library.splice(idx2,1)[0]); renderAll(); return; }
   alert('Carte non trouvée dans la bibliothèque.');
+}
+
+async function addCardToBoardByName(name){
+  const value = (name || '').trim();
+  if(!value){ return alert('Nom requis'); }
+
+  const result = await fetchCardByName(value);
+  if (result.error) {
+    return alert('Carte introuvable sur Scryfall.');
+  }
+
+  const data = result.data || {};
+  const card = {
+    id: uid('card'),
+    name: data.name || value,
+    image: chooseImageFromData(data),
+    raw: data,
+    counters: {},
+    tapped: false,
+    face: 0,
+    x: 24 + Math.random() * 140,
+    y: 24 + Math.random() * 140,
+    isToken: false
+  };
+
+  state.battlefield.push(card);
+  renderAll();
 }
 
 /* ===========================
@@ -1843,6 +1902,11 @@ $('newTurn').addEventListener('click', ()=>{
 $('drawX').addEventListener('click', ()=>{ const n = parseInt(prompt('Combien piocher ?', '1')); if(!n || n<=0) return; drawX(n); });
 $('millX').addEventListener('click', ()=>{ const n = parseInt(prompt('Combien meuler ?', '1')); if(!n || n<=0) return; millX(n); });
 $('tutorBtn').addEventListener('click', ()=>{ const name = prompt('Nom de la carte'); if(!name) return; tutorByName(name); });
+$('addToBoardBtn').addEventListener('click', ()=>{
+  const name = prompt('Nom de la carte à ajouter au board');
+  if(!name) return;
+  addCardToBoardByName(name);
+});
 $('revealTop').addEventListener('click', ()=>{
   if(state.library.length === 0) return alert('Bibliothèque vide');
   const overlay = document.createElement('div');
