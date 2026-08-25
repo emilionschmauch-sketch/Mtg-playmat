@@ -1,6 +1,17 @@
 <!doctype html>
 <html lang="fr">
 <head>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+
+    function gtag() {
+        dataLayer.push(arguments);
+    }
+
+    gtag('js', new Date());
+
+    gtag('config', 'G-XHDREBV239');
+</script>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>MAGIC Playmat</title>
@@ -20,16 +31,18 @@
 }
 html,body{height:100%;margin:0;background:var(--bg);color:var(--white);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;}
 .app{max-width:1300px;margin:0 auto;padding:12px;box-sizing:border-box;}
-.header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
-.header .title{font-size:18px;font-weight:600}
-.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.header{display:flex; flex-direction:row;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.header .title{font-size:38px;font-weight:600;}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
 textarea,input,button,select{font-family:inherit}
 textarea#deckText{width:100%;min-height:90px;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:#f8fafb;color:#012}
 .btn{background:#e6f6f5;color:#013;padding:8px 10px;border-radius:8px;border:none;cursor:pointer;}
-.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:6px 10px;border-radius:8px;color:var(--white)}
+.btn_utilise{background:#ffe600;color:#013;padding:8px 10px;border-radius:8px;border:none;cursor:pointer;}
+.btn:hover,.btn_utilise:hover{transform : scale(1.05);transition:transform 0.2s ease}
+.ghost{background:transparent;border:1px solid rgb(255, 255, 255);padding:6px 10px;border-radius:8px;color:var(--white); width:auto; height:auto; font-size:25px;}
 .small{padding:6px 8px;font-size:13px}
 .row-stats{display:flex;gap:12px;align-items:center;margin-top:8px}
-.stat{background:rgba(255,255,255,0.02);padding:8px;border-radius:8px;text-align:center;min-width:90px}
+.stat{background:rgba(88, 82, 82);padding:8px;border:1px solid white;border-radius:10px ; text-align:center;min-width:90px;}
 .stat .value{font-size:20px;margin:4px 0}
 .layout{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
 /* a column that expands downward; each column contains stacked zones */
@@ -91,6 +104,15 @@ textarea#deckText{width:100%;min-height:90px;padding:8px;border-radius:8px;borde
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.bouton_plus {
+  background: #081018;
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
 }
 
 .funcarte-view {
@@ -203,7 +225,7 @@ textarea#deckText{width:100%;min-height:90px;padding:8px;border-radius:8px;borde
 }
 
 /* small helper */
-.muted{color:var(--muted);font-size:13px}
+.muted{color:white;font-size:13px}
 .err{color:var(--danger);font-weight:600}
 
 /* Défaite */
@@ -227,38 +249,31 @@ body.game-over{
 <body>
 <div class="app" id="app">
   <div class="header">
-    <div class="title">MAGIC Playmat</div>
+    <div>
+    <div class="title">Simulateur MTG</div>
+    <h3>Réalisé par Emilion Schmauch</h3>
+    <p>Si le site vous plait ou pour toute question ou suggestion, contactez-moi par mail à emilion.schmauch@gmail.com</p>
+    </div>
     <div class="controls">
-      <button id="undoBtn" class="ghost small" title="Annuler la dernière action">Undo</button>
-      <button id="exportBtn" class="ghost small">Exporter état</button>
+      <button id="exportBtn" class="ghost">Exporter état</button>
       <input id="importStateFile" type="file" accept=".json" style="display:none" />
-      <button id="importStateBtn" class="ghost small">Importer état</button>
+      <button id="importStateBtn" class="ghost">Importer état</button>
     </div>
   </div>
 
   <div>
-    <label class="muted">Deck (textarea) ou importer (.txt)</label>
+    <label class="muted">Collez votre decklist ou importez un fichier (.txt). Privilégez l'anglais pour une meilleure qualité d'images.</label>
     <textarea id="deckText" placeholder="Ex : 4 Lightning Bolt"></textarea>
     <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
       <input id="deckFile" type="file" accept=".txt" />
       <button id="loadDeck" class="btn">Charger Deck</button>
       <span id="loadStatus" class="muted" style="display:none">Chargement…</span>
 
+      <button id="funcartes" class="btn" onclick="afficherFuncartesSection()">Funcartes</button>
       <button id="newGame" class="btn">Nouvelle partie</button>
     </div>
 
-    <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <button id="newTurn" class="btn small">Nouveau tour</button>
-      <button id="drawX" class="ghost small">Piocher X</button>
-      <button id="millX" class="ghost small">Meuler X</button>
-      <button id="tutorBtn" class="ghost small">Tutor (nom)</button>
-      <button id="addToBoardBtn" class="ghost small">Ajouter au board</button>
-      <button id="revealTop" class="ghost small">Révéler dessus</button>
-      <button id="shuffleLib" class="ghost small">Mélanger</button>
-      <button id="toggleHand" class="ghost small">Cacher main</button>
-    </div>
-
-    <div style="margin-top:12px;border-top:1px solid rgba(255,255,255,0.06);padding-top:12px">
+    <div style="padding-top:12px;display:none" id="funcarteSection">
       <label class="muted">Base de données Funcartes (importer plusieurs fichiers PNG/JPG dont le nom du fichier est le nom de la carte)</label>
       <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
         <input id="funcarteFile" type="file" accept="image/png,image/jpeg" multiple />
@@ -268,12 +283,26 @@ body.game-over{
         <span id="funcarteStatus" class="muted" style="display:none"></span>
       </div>
     </div>
+
+    <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button id="newTurn" class="btn small">Nouveau tour</button>
+      <button id="drawX" class="ghost small">Piocher X</button>
+      <button id="millX" class="ghost small">Meuler X</button>
+      <button id="tutorBtn" class="ghost small">Tutor (nom)</button>
+      <button id="addToBoardBtn" class="ghost small">Ajouter au board</button>
+      <button id="undoBtn" class="ghost small">Annuler</button>
+      <button id="revealTop" class="ghost small">Révéler dessus</button>
+      <button id="shuffleLib" class="ghost small">Mélanger</button>
+      <button id="toggleHand" class="ghost small">Cacher main</button>
+    </div>
+
+    
   </div>
 
   <div class="row-stats">
-    <div class="stat" id="lifeStat"><div class="muted">Vie</div><div id="life" class="value">40</div><div style="display:flex;gap:6px;justify-content:center"><button id="lifePlus" class="ghost small">+1</button><button id="lifeMinus" class="ghost small">-1</button></div></div>
-    <div class="stat" id="coStat"><div class="muted">Dégâts du commandant</div><div id="degat_du_co" class="value">0</div><div style="display:flex;gap:6px;justify-content:center"><button id="degat_du_coPlus" class="ghost small">+1</button><button id="degat_du_coMinus" class="ghost small">-1</button></div></div>
-    <div class="stat" id="poisonStat"><div class="muted">Poison</div><div id="poison" class="value">0</div><div style="display:flex;gap:6px;justify-content:center"><button id="poisonPlus" class="ghost small">+1</button><button id="poisonMinus" class="ghost small">-1</button></div></div>
+    <div class="stat" id="lifeStat"><div class="muted">Vie</div><div id="life" class="value">40</div><div style="display:flex;gap:6px;justify-content:center"><button id="lifePlus" class="bouton_plus">+1</button><button id="lifeMinus" class="bouton_plus">-1</button></div></div>
+    <div class="stat" id="coStat"><div class="muted">Dégâts du commandant</div><div id="degat_du_co" class="value">0</div><div style="display:flex;gap:6px;justify-content:center"><button id="degat_du_coPlus" class="bouton_plus">+1</button><button id="degat_du_coMinus" class="bouton_plus">-1</button></div></div>
+    <div class="stat" id="poisonStat"><div class="muted">Poison</div><div id="poison" class="value">0</div><div style="display:flex;gap:6px;justify-content:center"><button id="poisonPlus" class="bouton_plus">+1</button><button id="poisonMinus" class="bouton_plus">-1</button></div></div>
     <div style="margin-left:auto" class="muted">Deck: <span id="deckCount">0</span> — Bibliothèque: <span id="libCount">0</span></div>
   </div>
 <br>
@@ -603,6 +632,294 @@ const funcarteDB = {
 let currentFuncartes = {};
 funcarteDB.ready().then(db => { currentFuncartes = db; }).catch(() => {});
 
+deckFile.addEventListener('change', (e)=>{
+  const f = e.target.files && e.target.files[0];
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = (ev)=> deckText.value = ev.target.result;
+  reader.readAsText(f);
+});
+
+$('loadDeck').addEventListener('click', async ()=>{
+  const lines = deckText.value.split('\n').map(l=>l.trim()).filter(Boolean);
+  if(lines.length === 0) return alert('Colle une decklist ou importe un fichier .txt');
+  $('loadStatus').style.display = 'inline';
+  errorsDiv.innerHTML = '';
+  state.deck = []; state.library = []; state.hand=[]; state.battlefield=[]; state.graveyard=[]; state.exile=[]; state.commandZone=[]; state.tokensTemplates=[]; state.tokens=[];
+  const errors = [];
+  const tokenIds = new Set();
+  await funcarteDB.ready();
+
+  const parsedEntries = lines.map(rawLine => {
+    const m = rawLine.match(/^\s*(\d+)\s+(.+)$/);
+    if (m) {
+      return { qty: parseInt(m[1], 10), name: m[2], isTokenLine: false };
+    }
+    return { qty: 1, name: rawLine.trim(), isTokenLine: true };
+  });
+
+  const results = await Promise.all(parsedEntries.map(async entry => {
+    const { qty, name, isTokenLine } = entry;
+    if (isTokenLine) {
+      const local = await funcarteDB.get(name);
+      if (local && local.isTokenTemplate) {
+        return { type: 'tokenTemplate', value: { id: uid('tmpl'), name: local.name, image: local.imageUrl, raw: local, isToken: true } };
+      }
+    }
+
+    const res = await fetchCardByName(name);
+    if (res.error) {
+      return { type: 'error', value: `${name}: ${res.message}` };
+    }
+
+    const data = res.data;
+    if (Array.isArray(data.all_parts)) {
+      data.all_parts.forEach(p => { if(p.component === 'token') tokenIds.add(p.id); });
+    }
+
+    const cards = [];
+    for(let i=0;i<qty;i++){
+      cards.push({
+        id: uid('card'),
+        name: data.name || (data.card_faces?.[0]?.name) || name,
+        image: chooseImageFromData(data),
+        raw: data,
+        counters: {},
+        tapped: false,
+        face: 0,
+        zone: 'deck',
+        x: 20 + Math.random() * 200,
+        y: 20 + Math.random() * 200,
+        isToken: false
+      });
+    }
+    return { type: 'cards', value: cards };
+  }));
+
+  for (const result of results) {
+    if (result.type === 'tokenTemplate') {
+      state.tokensTemplates.push(result.value);
+    } else if (result.type === 'error') {
+      errors.push(result.value);
+    } else if (result.type === 'cards') {
+      state.deck.push(...result.value);
+    }
+  }
+
+  // fetch token templates
+  const tokenPromises = Array.from(tokenIds).map(async tid => {
+    try{
+      const d = await fetchJsonWithTimeout(`https://api.scryfall.com/cards/${encodeURIComponent(tid)}`, { headers: { Accept: 'application/json' } }, 6000);
+      if(d && d.object !== 'error') state.tokensTemplates.push({ id: uid('tmpl'), name: d.name, image: chooseImageFromData(d), raw:d });
+    }catch(e){ console.warn('token fetch error', e); }
+  });
+  await Promise.allSettled(tokenPromises);
+
+  // build library: shuffle deck
+  state.library = shuffleArray(state.deck.slice());
+  // ask commander
+  const cmd = prompt('Nom du commandant (laisser vide si aucun) :');
+  if(cmd && cmd.trim()){
+    // try find in library
+    const idx = state.library.findIndex(c => (c.name||'').toLowerCase() === cmd.trim().toLowerCase());
+    if(idx > -1){
+      const card = state.library.splice(idx,1)[0];
+      state.commandZone.push(card);
+      // memorize chosen commander so we can restore it on new games
+      state.chosenCommander = card;
+      state.chosenCommanderId = card.id;
+      commandWrap.style.display = 'block';
+    } else {
+      // fuzzy search
+      const idx2 = state.library.findIndex(c => (c.name||'').toLowerCase().includes(cmd.trim().toLowerCase()));
+      if(idx2 > -1){
+        const card = state.library.splice(idx2,1)[0];
+        state.commandZone.push(card);
+        state.chosenCommander = card;
+        state.chosenCommanderId = card.id;
+        commandWrap.style.display = 'block';
+      } else {
+        // try fetching if not present
+        const fetched = await Promise.race([
+          fetchCardByName(cmd.trim()),
+          new Promise(resolve => setTimeout(() => resolve({ error:true, message:'timeout' }), 2500))
+        ]);
+        if(!fetched.error){
+          const d = fetched.data;
+          const card = { id: uid('card'), name: d.name, image: chooseImageFromData(d), raw:d, counters:{}, tapped:false };
+          state.commandZone.push(card);
+          // fetched commander (not originally in deck) — remember it too
+          state.chosenCommander = card;
+          state.chosenCommanderId = card.id;
+          commandWrap.style.display = 'block';
+        } else {
+          const fallbackCard = {
+            id: uid('card'),
+            name: cmd.trim(),
+            image: '',
+            raw: { name: cmd.trim() },
+            counters:{},
+            tapped:false
+          };
+          state.commandZone.push(fallbackCard);
+          state.chosenCommander = fallbackCard;
+          state.chosenCommanderId = fallbackCard.id;
+          commandWrap.style.display = 'block';
+        }
+      }
+    }
+  } else {
+    commandWrap.style.display = 'none';
+    state.chosenCommander = null; state.chosenCommanderId = null;
+  }
+  renderAll();
+  if(errors.length) errorsDiv.innerHTML = '<div class="err">Erreurs :</div><ul style="color:#ffcccc">'+errors.map(e=>`<li>${e}</li>`).join('')+'</ul>';
+  $('loadStatus').style.display = 'none';
+});
+
+/* ===========================
+   FUNCARTES handlers
+   =========================== */
+importFuncarteBtn.addEventListener('click', async ()=>{
+  const files = Array.from(funcarteFile.files || []);
+  await funcarteDB.ready();
+  if(files.length === 0) return alert('Sélectionne au moins un fichier PNG');
+
+  funcarteStatus.style.display = 'inline';
+  funcarteStatus.textContent = 'Importation…';
+
+  const validFiles = files.filter(f =>
+    f.type === 'image/png' ||
+    f.type === 'image/jpeg' ||
+    f.name.toLowerCase().endsWith('.png') ||
+    f.name.toLowerCase().endsWith('.jpg') ||
+    f.name.toLowerCase().endsWith('.jpeg')
+  );
+  if(validFiles.length === 0){
+    funcarteStatus.textContent = 'Aucun fichier PNG/JPG valide trouvé';
+    setTimeout(()=>{ funcarteStatus.style.display = 'none'; }, 3000);
+    return;
+  }
+
+  const cards = [];
+  let imported = 0;
+
+  await Promise.all(validFiles.map(file => new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+    const imageUrl = ev.target.result;
+
+    let name = file.name.replace(/\.(png|jpe?g)$/i, '').trim();
+
+    // Détection des jetons
+    let isTokenTemplate = false;
+
+    if(/\(jeton\)$/i.test(name)){
+        isTokenTemplate = true;
+        name = name.replace(/\(jeton\)$/i, "").trim();
+    }
+
+    try {
+      const compressedUrl = await compressImageDataUrl(file, { maxWidth: 320, quality: 0.58 });
+      if(name && compressedUrl){
+          cards.push({
+              name,
+              imageUrl: compressedUrl,
+              isTokenTemplate
+          });
+
+          imported++;
+      }
+    } catch (e) {
+      console.warn('Compression failed for', file.name, e);
+      if(name && imageUrl){
+        cards.push({
+          name,
+          imageUrl,
+          isTokenTemplate
+        });
+        imported++;
+      }
+    }
+
+    resolve();
+};
+    reader.onerror = () => resolve();
+    reader.readAsDataURL(file);
+  })));
+
+  if(imported > 0){
+    await funcarteDB.addMany(cards);
+    currentFuncartes = await funcarteDB.getAll();
+    funcarteStatus.textContent = `✓ ${imported} funcartes importées`;
+    funcarteFile.value = '';
+    setTimeout(()=>{ funcarteStatus.style.display = 'none'; }, 2000);
+  } else {
+    funcarteStatus.textContent = 'Aucune carte valide importée';
+    setTimeout(()=>{ funcarteStatus.style.display = 'none'; }, 3000);
+  }
+});
+
+viewFuncarteBtn.addEventListener('click', async ()=>{
+  const db = await funcarteDB.getAll();
+  const entries = Object.values(db).filter(Boolean);
+  const count = entries.length;
+  if(count === 0){
+    alert('Base de données vide');
+    return;
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'funcarte-view';
+  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) overlay.remove(); });
+
+  const panel = document.createElement('div');
+  panel.className = 'funcarte-panel';
+
+  const header = document.createElement('div');
+  header.className = 'funcarte-header';
+  const title = document.createElement('div');
+  title.textContent = `Funcartes (${count})`;
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'ghost small';
+  closeBtn.textContent = 'Fermer';
+  closeBtn.addEventListener('click', ()=> overlay.remove());
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+
+  const grid = document.createElement('div');
+  grid.className = 'funcarte-grid';
+
+  entries.forEach(card => {
+    const item = document.createElement('div');
+    item.className = 'funcarte-item';
+    const img = document.createElement('img');
+    img.src = card.imageUrl || (Array.isArray(card.faces) ? card.faces[0] : '');
+    img.alt = card.name || 'funcarte';
+    img.onerror = ()=>{ img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='; };
+    const name = document.createElement('div');
+    name.className = 'funcarte-name';
+    name.textContent = card.name || '(sans nom)';
+    item.appendChild(img);
+    item.appendChild(name);
+    grid.appendChild(item);
+  });
+
+  panel.appendChild(header);
+  panel.appendChild(grid);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+});
+
+clearFuncarteBtn.addEventListener('click', async ()=>{
+  if(confirm('Êtes-vous sûr de vouloir effacer la base de données de funcartes?')){
+    await funcarteDB.clear();
+    currentFuncartes = {};
+    alert('Base de données effacée');
+  }
+});
+
+
 /* ===========================
    UTILS
    =========================== */
@@ -613,6 +930,13 @@ function pushUndo(action){
   if(undoStack.length > UNDO_LIMIT) undoStack.shift();
   $('undoBtn').disabled = false;
 }
+function afficherFuncartesSection(){
+  const section = document.getElementById('funcarteSection');
+  section.style.display = section.style.display === 'none' ? 'block' : 'none';
+  const btn = document.getElementById('funcartes');
+  btn.classList.toggle('btn_utilise', section.style.display !== 'none');
+}
+
 function doUndo(){
   const act = undoStack.pop();
   if(!act){ alert('Rien à annuler'); return; }
@@ -1518,292 +1842,7 @@ function transformCard(card){
 }
  
 
-deckFile.addEventListener('change', (e)=>{
-  const f = e.target.files && e.target.files[0];
-  if(!f) return;
-  const reader = new FileReader();
-  reader.onload = (ev)=> deckText.value = ev.target.result;
-  reader.readAsText(f);
-});
 
-$('loadDeck').addEventListener('click', async ()=>{
-  const lines = deckText.value.split('\n').map(l=>l.trim()).filter(Boolean);
-  if(lines.length === 0) return alert('Colle une decklist ou importe un fichier .txt');
-  $('loadStatus').style.display = 'inline';
-  errorsDiv.innerHTML = '';
-  state.deck = []; state.library = []; state.hand=[]; state.battlefield=[]; state.graveyard=[]; state.exile=[]; state.commandZone=[]; state.tokensTemplates=[]; state.tokens=[];
-  const errors = [];
-  const tokenIds = new Set();
-  await funcarteDB.ready();
-
-  const parsedEntries = lines.map(rawLine => {
-    const m = rawLine.match(/^\s*(\d+)\s+(.+)$/);
-    if (m) {
-      return { qty: parseInt(m[1], 10), name: m[2], isTokenLine: false };
-    }
-    return { qty: 1, name: rawLine.trim(), isTokenLine: true };
-  });
-
-  const results = await Promise.all(parsedEntries.map(async entry => {
-    const { qty, name, isTokenLine } = entry;
-    if (isTokenLine) {
-      const local = await funcarteDB.get(name);
-      if (local && local.isTokenTemplate) {
-        return { type: 'tokenTemplate', value: { id: uid('tmpl'), name: local.name, image: local.imageUrl, raw: local, isToken: true } };
-      }
-    }
-
-    const res = await fetchCardByName(name);
-    if (res.error) {
-      return { type: 'error', value: `${name}: ${res.message}` };
-    }
-
-    const data = res.data;
-    if (Array.isArray(data.all_parts)) {
-      data.all_parts.forEach(p => { if(p.component === 'token') tokenIds.add(p.id); });
-    }
-
-    const cards = [];
-    for(let i=0;i<qty;i++){
-      cards.push({
-        id: uid('card'),
-        name: data.name || (data.card_faces?.[0]?.name) || name,
-        image: chooseImageFromData(data),
-        raw: data,
-        counters: {},
-        tapped: false,
-        face: 0,
-        zone: 'deck',
-        x: 20 + Math.random() * 200,
-        y: 20 + Math.random() * 200,
-        isToken: false
-      });
-    }
-    return { type: 'cards', value: cards };
-  }));
-
-  for (const result of results) {
-    if (result.type === 'tokenTemplate') {
-      state.tokensTemplates.push(result.value);
-    } else if (result.type === 'error') {
-      errors.push(result.value);
-    } else if (result.type === 'cards') {
-      state.deck.push(...result.value);
-    }
-  }
-
-  // fetch token templates
-  const tokenPromises = Array.from(tokenIds).map(async tid => {
-    try{
-      const d = await fetchJsonWithTimeout(`https://api.scryfall.com/cards/${encodeURIComponent(tid)}`, { headers: { Accept: 'application/json' } }, 6000);
-      if(d && d.object !== 'error') state.tokensTemplates.push({ id: uid('tmpl'), name: d.name, image: chooseImageFromData(d), raw:d });
-    }catch(e){ console.warn('token fetch error', e); }
-  });
-  await Promise.allSettled(tokenPromises);
-
-  // build library: shuffle deck
-  state.library = shuffleArray(state.deck.slice());
-  // ask commander
-  const cmd = prompt('Nom du commandant (laisser vide si aucun) :');
-  if(cmd && cmd.trim()){
-    // try find in library
-    const idx = state.library.findIndex(c => (c.name||'').toLowerCase() === cmd.trim().toLowerCase());
-    if(idx > -1){
-      const card = state.library.splice(idx,1)[0];
-      state.commandZone.push(card);
-      // memorize chosen commander so we can restore it on new games
-      state.chosenCommander = card;
-      state.chosenCommanderId = card.id;
-      commandWrap.style.display = 'block';
-    } else {
-      // fuzzy search
-      const idx2 = state.library.findIndex(c => (c.name||'').toLowerCase().includes(cmd.trim().toLowerCase()));
-      if(idx2 > -1){
-        const card = state.library.splice(idx2,1)[0];
-        state.commandZone.push(card);
-        state.chosenCommander = card;
-        state.chosenCommanderId = card.id;
-        commandWrap.style.display = 'block';
-      } else {
-        // try fetching if not present
-        const fetched = await Promise.race([
-          fetchCardByName(cmd.trim()),
-          new Promise(resolve => setTimeout(() => resolve({ error:true, message:'timeout' }), 2500))
-        ]);
-        if(!fetched.error){
-          const d = fetched.data;
-          const card = { id: uid('card'), name: d.name, image: chooseImageFromData(d), raw:d, counters:{}, tapped:false };
-          state.commandZone.push(card);
-          // fetched commander (not originally in deck) — remember it too
-          state.chosenCommander = card;
-          state.chosenCommanderId = card.id;
-          commandWrap.style.display = 'block';
-        } else {
-          const fallbackCard = {
-            id: uid('card'),
-            name: cmd.trim(),
-            image: '',
-            raw: { name: cmd.trim() },
-            counters:{},
-            tapped:false
-          };
-          state.commandZone.push(fallbackCard);
-          state.chosenCommander = fallbackCard;
-          state.chosenCommanderId = fallbackCard.id;
-          commandWrap.style.display = 'block';
-        }
-      }
-    }
-  } else {
-    commandWrap.style.display = 'none';
-    state.chosenCommander = null; state.chosenCommanderId = null;
-  }
-  renderAll();
-  if(errors.length) errorsDiv.innerHTML = '<div class="err">Erreurs :</div><ul style="color:#ffcccc">'+errors.map(e=>`<li>${e}</li>`).join('')+'</ul>';
-  $('loadStatus').style.display = 'none';
-});
-
-/* ===========================
-   FUNCARTES handlers
-   =========================== */
-importFuncarteBtn.addEventListener('click', async ()=>{
-  const files = Array.from(funcarteFile.files || []);
-  await funcarteDB.ready();
-  if(files.length === 0) return alert('Sélectionne au moins un fichier PNG');
-
-  funcarteStatus.style.display = 'inline';
-  funcarteStatus.textContent = 'Importation…';
-
-  const validFiles = files.filter(f =>
-    f.type === 'image/png' ||
-    f.type === 'image/jpeg' ||
-    f.name.toLowerCase().endsWith('.png') ||
-    f.name.toLowerCase().endsWith('.jpg') ||
-    f.name.toLowerCase().endsWith('.jpeg')
-  );
-  if(validFiles.length === 0){
-    funcarteStatus.textContent = 'Aucun fichier PNG/JPG valide trouvé';
-    setTimeout(()=>{ funcarteStatus.style.display = 'none'; }, 3000);
-    return;
-  }
-
-  const cards = [];
-  let imported = 0;
-
-  await Promise.all(validFiles.map(file => new Promise(resolve => {
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-    const imageUrl = ev.target.result;
-
-    let name = file.name.replace(/\.(png|jpe?g)$/i, '').trim();
-
-    // Détection des jetons
-    let isTokenTemplate = false;
-
-    if(/\(jeton\)$/i.test(name)){
-        isTokenTemplate = true;
-        name = name.replace(/\(jeton\)$/i, "").trim();
-    }
-
-    try {
-      const compressedUrl = await compressImageDataUrl(file, { maxWidth: 320, quality: 0.58 });
-      if(name && compressedUrl){
-          cards.push({
-              name,
-              imageUrl: compressedUrl,
-              isTokenTemplate
-          });
-
-          imported++;
-      }
-    } catch (e) {
-      console.warn('Compression failed for', file.name, e);
-      if(name && imageUrl){
-        cards.push({
-          name,
-          imageUrl,
-          isTokenTemplate
-        });
-        imported++;
-      }
-    }
-
-    resolve();
-};
-    reader.onerror = () => resolve();
-    reader.readAsDataURL(file);
-  })));
-
-  if(imported > 0){
-    await funcarteDB.addMany(cards);
-    currentFuncartes = await funcarteDB.getAll();
-    funcarteStatus.textContent = `✓ ${imported} funcartes importées`;
-    funcarteFile.value = '';
-    setTimeout(()=>{ funcarteStatus.style.display = 'none'; }, 2000);
-  } else {
-    funcarteStatus.textContent = 'Aucune carte valide importée';
-    setTimeout(()=>{ funcarteStatus.style.display = 'none'; }, 3000);
-  }
-});
-
-viewFuncarteBtn.addEventListener('click', async ()=>{
-  const db = await funcarteDB.getAll();
-  const entries = Object.values(db).filter(Boolean);
-  const count = entries.length;
-  if(count === 0){
-    alert('Base de données vide');
-    return;
-  }
-
-  const overlay = document.createElement('div');
-  overlay.className = 'funcarte-view';
-  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) overlay.remove(); });
-
-  const panel = document.createElement('div');
-  panel.className = 'funcarte-panel';
-
-  const header = document.createElement('div');
-  header.className = 'funcarte-header';
-  const title = document.createElement('div');
-  title.textContent = `Funcartes (${count})`;
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'ghost small';
-  closeBtn.textContent = 'Fermer';
-  closeBtn.addEventListener('click', ()=> overlay.remove());
-  header.appendChild(title);
-  header.appendChild(closeBtn);
-
-  const grid = document.createElement('div');
-  grid.className = 'funcarte-grid';
-
-  entries.forEach(card => {
-    const item = document.createElement('div');
-    item.className = 'funcarte-item';
-    const img = document.createElement('img');
-    img.src = card.imageUrl || (Array.isArray(card.faces) ? card.faces[0] : '');
-    img.alt = card.name || 'funcarte';
-    img.onerror = ()=>{ img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='; };
-    const name = document.createElement('div');
-    name.className = 'funcarte-name';
-    name.textContent = card.name || '(sans nom)';
-    item.appendChild(img);
-    item.appendChild(name);
-    grid.appendChild(item);
-  });
-
-  panel.appendChild(header);
-  panel.appendChild(grid);
-  overlay.appendChild(panel);
-  document.body.appendChild(overlay);
-});
-
-clearFuncarteBtn.addEventListener('click', async ()=>{
-  if(confirm('Êtes-vous sûr de vouloir effacer la base de données de funcartes?')){
-    await funcarteDB.clear();
-    currentFuncartes = {};
-    alert('Base de données effacée');
-  }
-});
 
 function newGame(){
   if(confirm("Êtes-vous sûr de vouloir commencer une nouvelle partie ? Cela réinitialisera l'état actuel du jeu.")){
