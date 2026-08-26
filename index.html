@@ -362,10 +362,6 @@ body.game-over{
 </div>
 
 <script>
-  document.getElementById("newGame").addEventListener("click",function(){
-    console.log('ok');
-    gtag('event','nouvelle_partie',{bouton : "newGame"});
-});
 /* ===========================
    STATE
    =========================== */
@@ -1852,6 +1848,10 @@ function transformCard(card){
 function newGame(){
   if(confirm("Êtes-vous sûr de vouloir commencer une nouvelle partie ? Cela réinitialisera l'état actuel du jeu.")){
     resetGameState();
+    gtag('event', 'nouvelle_partie', {
+      bouton: 'newGame',
+      page: 'playmat'
+    });
   }
 }
 function resetGameState(){
