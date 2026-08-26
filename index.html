@@ -1,14 +1,16 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-XHDREBV239"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
+  <script>
+    window.dataLayer = window.dataLayer || [];
 
-  gtag('config', 'G-XHDREBV239');
+    function gtag() {
+        dataLayer.push(arguments);
+    }
+
+    gtag('js', new Date());
+
+    gtag('config', 'G-XHDREBV239');
 </script>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -359,6 +361,8 @@ body.game-over{
 </div>
 
 <script>
+  document.getElementById("newGame").addEventListener("click",function(){gtag('event','nouvelle_partie',{bouton : "newGame"});
+});
 /* ===========================
    STATE
    =========================== */
