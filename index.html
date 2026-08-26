@@ -361,7 +361,9 @@ body.game-over{
 </div>
 
 <script>
-  document.getElementById("newGame").addEventListener("click",function(){gtag('event','nouvelle_partie',{bouton : "newGame"});
+  document.getElementById("newGame").addEventListener("click",function(){
+    console.log('ok');
+    gtag('event','nouvelle_partie',{bouton : "newGame"});
 });
 /* ===========================
    STATE
