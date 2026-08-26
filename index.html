@@ -229,6 +229,106 @@ textarea#deckText{width:100%;min-height:90px;padding:8px;border-radius:8px;borde
 .muted{color:white;font-size:13px}
 .err{color:var(--danger);font-weight:600}
 
+.remote-players-wrap{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  margin-top:12px;
+}
+
+.remote-player{
+  background:linear-gradient(180deg, rgba(15,43,37,0.96), rgba(6,46,40,0.96));
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:10px;
+  padding:10px;
+  box-sizing:border-box;
+}
+
+.remote-player-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:8px;
+}
+
+.remote-player-name{
+  font-weight:700;
+}
+
+.remote-player-stats{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-bottom:10px;
+}
+
+.remote-stat{
+  background:rgba(255,255,255,0.03);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:8px;
+  padding:8px 10px;
+  min-width:110px;
+  text-align:center;
+}
+
+.remote-player-zone{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  min-height:80px;
+  padding-top:4px;
+}
+
+.remote-layout{
+  display:flex;
+  gap:12px;
+  align-items:flex-start;
+  flex-wrap:wrap;
+  margin-top:8px;
+}
+
+.remote-col{
+  flex:1;
+  min-width:170px;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+.remote-col-center{
+  flex:2;
+}
+
+.remote-zone{
+  background:linear-gradient(180deg,var(--panel),#062e28);
+  padding:10px;
+  border-radius:10px;
+  min-height:120px;
+  box-sizing:border-box;
+}
+
+.remote-battle-area{
+  position:relative;
+  min-height:320px;
+  overflow:hidden;
+}
+
+.remote-hidden-card{
+  width:var(--small-w);
+  height:var(--small-h);
+  border-radius:8px;
+  background-size:cover;
+  background-position:center;
+  box-shadow:0 8px 20px rgba(0,0,0,0.6);
+  background-image:url('https://cards.scryfall.io/back.png');
+}
+
+.remote-player .card{
+  width:var(--small-w);
+  height:var(--small-h);
+}
+
 /* Défaite */
 body.game-over{
     background:#7a0000 !important;
@@ -253,7 +353,8 @@ body.game-over{
     <div>
     <div class="title">Simulateur MTG</div>
     <h3>Réalisé par Emilion Schmauch</h3>
-    <p>Si le site vous plait ou pour toute question ou suggestion, contactez-moi par mail à emilion.schmauch@gmail.com</p>
+    <p>Si le site vous plait ou pour toute question ou suggestion, 
+      vous pouvez me contacter par mail à emilion.schmauch@gmail.com</p>
     </div>
     <div class="controls">
       <button id="exportBtn" class="ghost">Exporter état</button>
@@ -263,13 +364,16 @@ body.game-over{
   </div>
 
   <div>
-    <label class="muted">Collez votre decklist ou importez un fichier (.txt). Privilégez l'anglais pour une meilleure qualité d'images.</label>
+    <label class="muted">Collez votre decklist ou importez un fichier (.txt) puis clickez sur "Charger Deck". 
+      Privilégez l'anglais pour une meilleure qualité d'images. 
+      Si toutes les cartes ne se chargent pas, vérifiez votre connexion.</label>
     <textarea id="deckText" placeholder="Ex : 4 Lightning Bolt"></textarea>
     <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
       <input id="deckFile" type="file" accept=".txt" />
       <button id="loadDeck" class="btn">Charger Deck</button>
       <span id="loadStatus" class="muted" style="display:none">Chargement…</span>
 
+      <button id="addRemotePlayerBtn" class="btn">Ajouter joueur distant</button>
       <button id="funcartes" class="btn" onclick="afficherFuncartesSection()">Funcartes</button>
       <button id="newGame" class="btn">Nouvelle partie</button>
     </div>
@@ -306,6 +410,8 @@ body.game-over{
     <div class="stat" id="poisonStat"><div class="muted">Poison</div><div id="poison" class="value">0</div><div style="display:flex;gap:6px;justify-content:center"><button id="poisonPlus" class="bouton_plus">+1</button><button id="poisonMinus" class="bouton_plus">-1</button></div></div>
     <div style="margin-left:auto" class="muted">Deck: <span id="deckCount">0</span> — Bibliothèque: <span id="libCount">0</span></div>
   </div>
+
+  
 <br>
 <div class="zone" id="handZone">
         <div class="zone-title">Main (<span id="handCount">0</span>)</div>
@@ -357,11 +463,13 @@ body.game-over{
 
     </div>
   </div>
-
+<div id="remotePlayersWrap" class="remote-players-wrap"></div>
   <div id="errors" style="margin-top:8px"></div>
 </div>
 
 <script>
+const uid = (p='id') => `${p}-${Math.random().toString(36).slice(2,9)}`;
+
 /* ===========================
    STATE
    =========================== */
@@ -374,7 +482,8 @@ const state = {
   exile: [],
   commandZone: [],
   tokensTemplates: [],
-  tokens: []     // token objects (displayed on battlefield)
+  tokens: [],    // token objects (displayed on battlefield)
+  remotePlayers: []
 };
 // chosen commander remembered when loading a deck
 state.chosenCommander = null;
@@ -924,7 +1033,13 @@ clearFuncarteBtn.addEventListener('click', async ()=>{
 /* ===========================
    UTILS
    =========================== */
-const uid = (p='id') => `${p}-${Math.random().toString(36).slice(2,9)}`;
+const multiplayer = {
+  room: 'magic-playmat',
+  clientId: uid('player'),
+  name: 'Moi',
+  socket: null,
+  connected: false
+};
 function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
 function pushUndo(action){
   undoStack.push(action);
@@ -1131,6 +1246,337 @@ function renderZonesSmall(){
   // keep library hidden by default (as requested)
 }
 
+function sanitizeRemotePlayer(player){
+  if(!player || !player.id) return null;
+  const normalizeCard = (card) => {
+    if(!card || typeof card !== 'object') return null;
+    return {
+      ...card,
+      id: card.id || uid('remote-card'),
+      name: card.name || 'Carte',
+      image: card.image || '',
+      x: Number.isFinite(card.x) ? card.x : 0,
+      y: Number.isFinite(card.y) ? card.y : 0,
+      tapped: !!card.tapped,
+      isToken: !!card.isToken,
+      counters: card.counters ? { ...card.counters } : {}
+    };
+  };
+
+  return {
+    id: String(player.id),
+    name: player.name || 'Joueur distant',
+    life: Number(player.life || 40),
+    commanderDamage: Number(player.commanderDamage || 0),
+    poison: Number(player.poison || 0),
+    hand: Array.isArray(player.hand) ? player.hand.map(normalizeCard).filter(Boolean) : [],
+    battlefield: Array.isArray(player.battlefield) ? player.battlefield.map(normalizeCard).filter(Boolean) : [],
+    graveyard: Array.isArray(player.graveyard) ? player.graveyard.map(normalizeCard).filter(Boolean) : [],
+    exile: Array.isArray(player.exile) ? player.exile.map(normalizeCard).filter(Boolean) : [],
+    commandZone: Array.isArray(player.commandZone) ? player.commandZone.map(normalizeCard).filter(Boolean) : [],
+    tokens: Array.isArray(player.tokens) ? player.tokens.map(normalizeCard).filter(Boolean) : []
+  };
+}
+
+function syncRemotePlayerCards(existing, incoming){
+  if(!existing || !incoming) return;
+  const zones = ['hand', 'battlefield', 'graveyard', 'exile', 'commandZone', 'tokens'];
+  zones.forEach((zone) => {
+    const currentList = Array.isArray(existing[zone]) ? existing[zone] : [];
+    const incomingList = Array.isArray(incoming[zone]) ? incoming[zone] : [];
+    const currentMap = new Map(currentList.map((card) => [String(card.id), card]));
+
+    incomingList.forEach((card) => {
+      const key = String(card.id);
+      const match = currentMap.get(key);
+      if (match) {
+        Object.assign(match, card);
+        if (!Number.isFinite(match.x)) match.x = 0;
+        if (!Number.isFinite(match.y)) match.y = 0;
+      } else {
+        currentList.push({ ...card });
+      }
+    });
+
+    existing[zone] = currentList;
+  });
+}
+
+function renderRemotePlayers(){
+  const container = document.getElementById('remotePlayersWrap');
+  if(!container) return;
+  container.innerHTML = '';
+
+  const players = Array.isArray(state.remotePlayers) ? state.remotePlayers.filter(Boolean) : [];
+  players.forEach((player) => {
+    const panel = document.createElement('div');
+    panel.className = 'remote-player';
+
+    const header = document.createElement('div');
+    header.className = 'remote-player-header';
+
+    const name = document.createElement('div');
+    name.className = 'remote-player-name';
+    name.textContent = player.name || 'Joueur distant';
+
+    const status = document.createElement('div');
+    status.className = 'muted';
+    status.textContent = 'Adversaire';
+    header.appendChild(name);
+    header.appendChild(status);
+
+    const stats = document.createElement('div');
+    stats.className = 'remote-player-stats';
+    const statsData = [
+      { label: 'Vie', value: player.life ?? 40 },
+      { label: 'Dégâts du commandant', value: player.commanderDamage ?? 0 },
+      { label: 'Poison', value: player.poison ?? 0 }
+    ];
+    statsData.forEach((stat) => {
+      const node = document.createElement('div');
+      node.className = 'remote-stat';
+      node.innerHTML = `<div class="muted">${stat.label}</div><div class="value">${stat.value}</div>`;
+      stats.appendChild(node);
+    });
+
+    const handWrap = document.createElement('div');
+    handWrap.className = 'remote-player-zone';
+    handWrap.innerHTML = `<div class="muted" style="width:100%">Main cachée (${(player.hand || []).length})</div>`;
+    for (let i = 0; i < Math.max(0, (player.hand || []).length); i++) {
+      const hidden = document.createElement('div');
+      hidden.className = 'remote-hidden-card';
+      handWrap.appendChild(hidden);
+    }
+
+    const layout = document.createElement('div');
+    layout.className = 'remote-layout';
+
+    const leftCol = document.createElement('div');
+    leftCol.className = 'remote-col';
+
+    const graveZone = document.createElement('div');
+    graveZone.className = 'remote-zone';
+    graveZone.innerHTML = `<div class="zone-title">Cimetière (${(player.graveyard || []).length})</div>`;
+    for(const card of player.graveyard || []){
+      const el = document.createElement('div');
+      el.className = `card ${card.tapped ? 'tapped' : ''}`;
+      el.style.backgroundImage = card.image ? `url(${card.image})` : 'linear-gradient(90deg,#444,#666)';
+      el.addEventListener('mouseenter', () => showCardZoom(card));
+      el.addEventListener('mouseleave', hideCardZoom);
+      renderCountersOnEl(el, card);
+      graveZone.appendChild(el);
+    }
+
+    const exileZone = document.createElement('div');
+    exileZone.className = 'remote-zone';
+    exileZone.innerHTML = `<div class="zone-title">Exil (${(player.exile || []).length})</div>`;
+    for(const card of player.exile || []){
+      const el = document.createElement('div');
+      el.className = `card ${card.tapped ? 'tapped' : ''}`;
+      el.style.backgroundImage = card.image ? `url(${card.image})` : 'linear-gradient(90deg,#444,#666)';
+      el.addEventListener('mouseenter', () => showCardZoom(card));
+      el.addEventListener('mouseleave', hideCardZoom);
+      renderCountersOnEl(el, card);
+      exileZone.appendChild(el);
+    }
+
+    leftCol.appendChild(graveZone);
+    leftCol.appendChild(exileZone);
+
+    const battleCol = document.createElement('div');
+    battleCol.className = 'remote-col remote-col-center';
+    const battlefieldZone = document.createElement('div');
+    battlefieldZone.className = 'remote-zone remote-battle-area';
+    battlefieldZone.innerHTML = `<div class="zone-title">Champ de bataille (${(player.battlefield || []).length + (player.tokens || []).length})</div>`;
+    const battlefieldCards = [...(player.battlefield || []), ...(player.tokens || [])];
+    battlefieldCards.forEach((card, index) => {
+      const el = document.createElement('div');
+      const cardX = Number.isFinite(card.x) ? card.x : 20 + (index % 4) * 90;
+      const cardY = Number.isFinite(card.y) ? card.y : 30 + Math.floor(index / 4) * 120;
+      el.className = `card ${card.tapped ? 'tapped' : ''}`;
+      el.style.position = 'absolute';
+      el.style.left = cardX + 'px';
+      el.style.top = cardY + 'px';
+      el.style.backgroundImage = card.image ? `url(${card.image})` : 'linear-gradient(90deg,#444,#666)';
+      el.addEventListener('mouseenter', () => showCardZoom(card));
+      el.addEventListener('mouseleave', hideCardZoom);
+      el.addEventListener('dblclick', () => {
+        card.tapped = !card.tapped;
+        renderRemotePlayers();
+      });
+      attachPointerDragRemote(el, card, battlefieldZone);
+      renderCountersOnEl(el, card);
+      battlefieldZone.appendChild(el);
+    });
+    battleCol.appendChild(battlefieldZone);
+
+    const rightCol = document.createElement('div');
+    rightCol.className = 'remote-col';
+    const commandZone = document.createElement('div');
+    commandZone.className = 'remote-zone';
+    commandZone.innerHTML = `<div class="zone-title">Zone de commandement (${(player.commandZone || []).length})</div>`;
+    for(const card of player.commandZone || []){
+      const el = document.createElement('div');
+      el.className = `card ${card.tapped ? 'tapped' : ''}`;
+      el.style.backgroundImage = card.image ? `url(${card.image})` : 'linear-gradient(90deg,#444,#666)';
+      el.addEventListener('mouseenter', () => showCardZoom(card));
+      el.addEventListener('mouseleave', hideCardZoom);
+      renderCountersOnEl(el, card);
+      commandZone.appendChild(el);
+    }
+
+    const tokensZone = document.createElement('div');
+    tokensZone.className = 'remote-zone';
+    tokensZone.innerHTML = `<div class="zone-title">Tokens (${(player.tokens || []).length})</div>`;
+    for(const card of player.tokens || []){
+      const el = document.createElement('div');
+      el.className = `card ${card.tapped ? 'tapped' : ''}`;
+      el.style.backgroundImage = card.image ? `url(${card.image})` : 'linear-gradient(90deg,#444,#666)';
+      el.addEventListener('mouseenter', () => showCardZoom(card));
+      el.addEventListener('mouseleave', hideCardZoom);
+      renderCountersOnEl(el, card);
+      tokensZone.appendChild(el);
+    }
+
+    rightCol.appendChild(commandZone);
+    rightCol.appendChild(tokensZone);
+
+    layout.appendChild(leftCol);
+    layout.appendChild(battleCol);
+    layout.appendChild(rightCol);
+
+    panel.appendChild(header);
+    panel.appendChild(stats);
+    panel.appendChild(handWrap);
+    panel.appendChild(layout);
+    container.appendChild(panel);
+  });
+}
+
+function buildPublicStateSnapshot(){
+  const serializeCard = (card) => ({
+    id: card.id,
+    name: card.name,
+    image: card.image,
+    x: card.x,
+    y: card.y,
+    tapped: !!card.tapped,
+    isToken: !!card.isToken,
+    counters: { ...(card.counters || {}) }
+  });
+
+  return {
+    id: multiplayer.clientId,
+    name: multiplayer.name || 'Moi',
+    life: parseInt(lifeNode.textContent, 10) || 40,
+    commanderDamage: parseInt($('degat_du_co').textContent, 10) || 0,
+    poison: parseInt(poisonNode.textContent, 10) || 0,
+    hand: state.hand.map(serializeCard),
+    battlefield: state.battlefield.map(serializeCard),
+    graveyard: state.graveyard.map(serializeCard),
+    exile: state.exile.map(serializeCard),
+    commandZone: state.commandZone.map(serializeCard),
+    tokens: state.tokens.map(serializeCard)
+  };
+}
+
+function broadcastLocalState(){
+  if(!multiplayer.socket || multiplayer.socket.readyState !== WebSocket.OPEN) return;
+  const payload = {
+    type: 'sync-state',
+    room: multiplayer.room,
+    player: buildPublicStateSnapshot()
+  };
+  multiplayer.socket.send(JSON.stringify(payload));
+}
+
+function handleSocketMessage(rawMessage){
+  try {
+    const payload = JSON.parse(rawMessage.data || '{}');
+    if(!payload || payload.room !== multiplayer.room) return;
+
+    if(payload.type === 'room-state' && Array.isArray(payload.players)){
+      payload.players.forEach((player) => {
+        const safePlayer = sanitizeRemotePlayer(player);
+        if(!safePlayer || safePlayer.id === multiplayer.clientId) return;
+        const existing = state.remotePlayers.find(p => p.id === safePlayer.id);
+        if(existing){
+          syncRemotePlayerCards(existing, safePlayer);
+          Object.assign(existing, safePlayer);
+        } else {
+          state.remotePlayers.push(safePlayer);
+        }
+      });
+      renderRemotePlayers();
+      return;
+    }
+
+    if(payload.type === 'join' && payload.player){
+      const safePlayer = sanitizeRemotePlayer(payload.player);
+      if(safePlayer){
+        const existing = state.remotePlayers.find(p => p.id === safePlayer.id);
+        if(existing){
+          syncRemotePlayerCards(existing, safePlayer);
+          Object.assign(existing, safePlayer);
+        } else { state.remotePlayers.push(safePlayer); }
+        renderRemotePlayers();
+      }
+      return;
+    }
+    if(payload.type === 'sync-state' && payload.player){
+      const safePlayer = sanitizeRemotePlayer(payload.player);
+      if(!safePlayer) return;
+      if(safePlayer.id === multiplayer.clientId) return;
+      const existing = state.remotePlayers.find(p => p.id === safePlayer.id);
+      if(existing){
+        syncRemotePlayerCards(existing, safePlayer);
+        Object.assign(existing, safePlayer);
+      } else { state.remotePlayers.push(safePlayer); }
+      renderRemotePlayers();
+    }
+  } catch (error) {
+    console.warn('WebSocket message invalid :', error);
+  }
+}
+
+function connectRemotePlayer(){
+  const playerName = prompt('Nom du joueur distant', 'Joueur 2');
+  if(!playerName) return;
+
+  const roomName = prompt('Nom de la salle', multiplayer.room);
+  const endpoint = prompt('URL WebSocket', 'ws://localhost:8080');
+  if(!endpoint) return;
+
+  multiplayer.name = playerName.trim() || 'Joueur 2';
+  multiplayer.room = (roomName || multiplayer.room).trim() || multiplayer.room;
+
+  if(multiplayer.socket){
+    try { multiplayer.socket.close(); } catch (e) {}
+  }
+
+  try {
+    const socket = new WebSocket(endpoint);
+    multiplayer.socket = socket;
+    socket.addEventListener('open', () => {
+      multiplayer.connected = true;
+      socket.send(JSON.stringify({ type: 'join', room: multiplayer.room, player: buildPublicStateSnapshot() }));
+      broadcastLocalState();
+    });
+    socket.addEventListener('message', handleSocketMessage);
+    socket.addEventListener('close', () => {
+      multiplayer.connected = false;
+      console.log('WebSocket distant déconnecté');
+    });
+    socket.addEventListener('error', () => {
+      multiplayer.connected = false;
+      alert('Connexion WebSocket impossible. Vérifie que le serveur est lancé sur ' + endpoint);
+    });
+  } catch (error) {
+    console.warn('Impossible de créer la WebSocket :', error);
+    alert('URL WebSocket invalide.');
+  }
+}
+
 function cloneSerializable(value){
   try { return JSON.parse(JSON.stringify(value)); }
   catch(e){ return value; }
@@ -1229,7 +1675,9 @@ function renderAll(){
   renderHand();
   renderBattlefield();
   renderZonesSmall();
+  renderRemotePlayers();
   updateCounts();
+  broadcastLocalState();
 }
 
 /* ===========================
@@ -1267,9 +1715,49 @@ function attachPointerDrag(el, card, container){
   });
   window.addEventListener('pointerup', (event)=>{
     if(!dragging) return;
-    try{ el.releasePointerCapture(dragging.pointerId); }catch(_){}
+    try{ el.releasePointerCapture(dragging.pointerId); }catch(_){ }
     dragging = null;
-    // push move undo? we could store last move action but skip for simplicity
+    if (multiplayer && multiplayer.socket && multiplayer.socket.readyState === WebSocket.OPEN) {
+      broadcastLocalState();
+    }
+  });
+}
+
+function attachPointerDragRemote(el, card, container){
+  let dragging = null;
+  el.addEventListener('pointerdown', (event)=>{
+    event.preventDefault();
+    try { el.setPointerCapture(event.pointerId); } catch (_) {}
+    dragging = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      origX: el.offsetLeft,
+      origY: el.offsetTop,
+      parentRect: container.getBoundingClientRect()
+    };
+  });
+
+  window.addEventListener('pointermove', (event)=>{
+    if(!dragging) return;
+    const dx = event.clientX - dragging.startX;
+    const dy = event.clientY - dragging.startY;
+    const nx = dragging.origX + dx;
+    const ny = dragging.origY + dy;
+    const maxX = dragging.parentRect.width - parseFloat(getComputedStyle(el).width);
+    const maxY = dragging.parentRect.height - parseFloat(getComputedStyle(el).height);
+    const clampedX = clamp(nx, 0, Math.max(0, maxX));
+    const clampedY = clamp(ny, 0, Math.max(0, maxY));
+    el.style.left = clampedX + 'px';
+    el.style.top = clampedY + 'px';
+    card.x = clampedX;
+    card.y = clampedY;
+  });
+
+  window.addEventListener('pointerup', () => {
+    if(!dragging) return;
+    try { el.releasePointerCapture(dragging.pointerId); } catch (_) {}
+    dragging = null;
   });
 }
 
@@ -1293,6 +1781,21 @@ function setCardFaceVisibility(card, faceDown){
   }
   renderAll();
   closeMenu();
+}
+
+function showCardZoom(card){
+  if (!card || !card.image) return;
+  const overlay = document.getElementById('zoomOverlay');
+  const zoomImg = document.getElementById('zoomImage');
+  if (!overlay || !zoomImg) return;
+  zoomImg.src = card.image;
+  overlay.classList.remove('hidden');
+  overlay.onclick = () => overlay.classList.add('hidden');
+}
+
+function hideCardZoom(){
+  const overlay = document.getElementById('zoomOverlay');
+  if (overlay) overlay.classList.add('hidden');
 }
 
 function openContextMenuForCard(event, cardObj, fromZone){
@@ -1850,7 +2353,7 @@ function newGame(){
     resetGameState();
     gtag('event', 'nouvelle_partie', {
       bouton: 'newGame',
-      page: 'MAGIC Playmat'
+      page: 'playmat'
     });
   }
 }
@@ -2027,30 +2530,36 @@ $('shuffleLib').addEventListener('click', ()=>{ state.library = shuffleArray(sta
 $('lifePlus').addEventListener('click', ()=>{
     lifeNode.textContent = parseInt(lifeNode.textContent) + 1;
     updateGameOverDisplay();
+    broadcastLocalState();
 });
 $('lifeMinus').addEventListener('click', ()=>{
     lifeNode.textContent = parseInt(lifeNode.textContent) - 1;
     updateGameOverDisplay();
+    broadcastLocalState();
 });
 $('degat_du_coPlus').addEventListener('click', ()=>{
     $('degat_du_co').textContent =
         parseInt($('degat_du_co').textContent) + 1;
         lifeNode.textContent = parseInt(lifeNode.textContent) - 1;
     updateGameOverDisplay();
+    broadcastLocalState();
 });
 $('degat_du_coMinus').addEventListener('click', ()=>{
     $('degat_du_co').textContent =
         parseInt($('degat_du_co').textContent) - 1;
         lifeNode.textContent = parseInt(lifeNode.textContent) + 1;
     updateGameOverDisplay();
+    broadcastLocalState();
 });
 $('poisonPlus').addEventListener('click', ()=>{
     poisonNode.textContent = parseInt(poisonNode.textContent) + 1;
     updateGameOverDisplay();
+    broadcastLocalState();
 });
 $('poisonMinus').addEventListener('click', ()=>{
     poisonNode.textContent = parseInt(poisonNode.textContent) - 1;
     updateGameOverDisplay();
+    broadcastLocalState();
 });
 
 $('toggleHand').addEventListener('click', ()=>{
@@ -2058,6 +2567,8 @@ $('toggleHand').addEventListener('click', ()=>{
   $('toggleHand').textContent = handHidden ? 'Révéler main' : 'Cacher main';
   renderAll();
 });
+
+$('addRemotePlayerBtn').addEventListener('click', connectRemotePlayer);
 
 $('newGame').addEventListener('click', newGame);
 
