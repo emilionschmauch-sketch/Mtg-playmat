@@ -281,23 +281,29 @@ textarea#deckText{width:100%;min-height:90px;padding:8px;border-radius:8px;borde
 }
 
 .remote-layout{
-  display:flex;
+  display:grid;
+  grid-template-columns: minmax(180px, 1.1fr) minmax(320px, 3fr) minmax(180px, 1.15fr);
   gap:12px;
-  align-items:flex-start;
-  flex-wrap:wrap;
+  align-items:start;
   margin-top:8px;
+  width:100%;
 }
 
 .remote-col{
-  flex:1;
-  min-width:170px;
+  min-width:0;
   display:flex;
   flex-direction:column;
   gap:12px;
 }
 
+.remote-left-split{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap:12px;
+}
+
 .remote-col-center{
-  flex:2;
+  min-width:320px;
 }
 
 .remote-zone{
@@ -310,8 +316,9 @@ textarea#deckText{width:100%;min-height:90px;padding:8px;border-radius:8px;borde
 
 .remote-battle-area{
   position:relative;
-  min-height:320px;
-  overflow:hidden;
+  min-height:460px;
+  width:100%;
+  overflow:visible;
 }
 
 .remote-hidden-card{
@@ -768,49 +775,84 @@ $('loadDeck').addEventListener('click', async ()=>{
     return { qty: 1, name: rawLine.trim(), isTokenLine: true };
   });
 
-  const results = await Promise.all(parsedEntries.map(async entry => {
-    const { qty, name, isTokenLine } = entry;
-    if (isTokenLine) {
-      const local = await funcarteDB.get(name);
-      if (local && local.isTokenTemplate) {
-        return { type: 'tokenTemplate', value: { id: uid('tmpl'), name: local.name, image: local.imageUrl, raw: local, isToken: true } };
+  const entryMap = new Map();
+  for (const entry of parsedEntries) {
+    const key = normalizeCardName(entry.name || '').toLowerCase() || (entry.name || '').trim().toLowerCase();
+    if (!entryMap.has(key)) {
+      entryMap.set(key, { ...entry, qty: 0 });
+    }
+    entryMap.get(key).qty += Math.max(1, Number(entry.qty) || 1);
+  }
+
+  const uniqueEntries = [...entryMap.values()];
+  const queue = uniqueEntries.slice();
+  const results = [];
+  const workerCount = Math.min(6, Math.max(1, queue.length));
+
+  const worker = async () => {
+    while (queue.length) {
+      const entry = queue.shift();
+      if (!entry) continue;
+
+      const { qty, name, isTokenLine } = entry;
+      let data = null;
+      let fetchError = null;
+
+      try {
+        if (isTokenLine) {
+          const local = await funcarteDB.get(name);
+          if (local && local.isTokenTemplate) {
+            results.push({ type: 'tokenTemplate', value: { id: uid('tmpl'), name: local.name, image: local.imageUrl, raw: local, isToken: true } });
+            continue;
+          }
+        }
+
+        const res = await fetchCardByName(name);
+        if (res && res.error) {
+          fetchError = res.message || 'not found';
+        } else {
+          data = res && res.data ? res.data : null;
+        }
+      } catch (error) {
+        fetchError = error && error.message ? error.message : 'chargement impossible';
       }
-    }
 
-    const res = await fetchCardByName(name);
-    if (res.error) {
-      return { type: 'error', value: `${name}: ${res.message}` };
-    }
+      if (!data) {
+        if (fetchError) {
+          errors.push(`${name}: ${fetchError}`);
+        }
+        continue;
+      }
 
-    const data = res.data;
-    if (Array.isArray(data.all_parts)) {
-      data.all_parts.forEach(p => { if(p.component === 'token') tokenIds.add(p.id); });
-    }
+      if (Array.isArray(data.all_parts)) {
+        data.all_parts.forEach(p => { if(p.component === 'token') tokenIds.add(p.id); });
+      }
 
-    const cards = [];
-    for(let i=0;i<qty;i++){
-      cards.push({
-        id: uid('card'),
-        name: data.name || (data.card_faces?.[0]?.name) || name,
-        image: chooseImageFromData(data),
-        raw: data,
-        counters: {},
-        tapped: false,
-        face: 0,
-        zone: 'deck',
-        x: 20 + Math.random() * 200,
-        y: 20 + Math.random() * 200,
-        isToken: false
-      });
+      const cards = [];
+      for(let i=0;i<qty;i++){
+        cards.push({
+          id: uid('card'),
+          name: data.name || (data.card_faces?.[0]?.name) || name,
+          image: chooseImageFromData(data),
+          raw: data,
+          counters: {},
+          tapped: false,
+          face: 0,
+          zone: 'deck',
+          x: 20 + Math.random() * 200,
+          y: 20 + Math.random() * 200,
+          isToken: false
+        });
+      }
+      results.push({ type: 'cards', value: cards });
     }
-    return { type: 'cards', value: cards };
-  }));
+  };
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
 
   for (const result of results) {
     if (result.type === 'tokenTemplate') {
       state.tokensTemplates.push(result.value);
-    } else if (result.type === 'error') {
-      errors.push(result.value);
     } else if (result.type === 'cards') {
       state.deck.push(...result.value);
     }
@@ -1341,7 +1383,7 @@ function renderRemotePlayers(){
 
     const handWrap = document.createElement('div');
     handWrap.className = 'remote-player-zone';
-    handWrap.innerHTML = `<div class="muted" style="width:100%">Main cachée (${(player.hand || []).length})</div>`;
+    handWrap.innerHTML = `<div class="zone-title">Main (${(player.hand || []).length})</div>`;
     for (let i = 0; i < Math.max(0, (player.hand || []).length); i++) {
       const hidden = document.createElement('div');
       hidden.className = 'remote-hidden-card';
@@ -1352,7 +1394,7 @@ function renderRemotePlayers(){
     layout.className = 'remote-layout';
 
     const leftCol = document.createElement('div');
-    leftCol.className = 'remote-col';
+    leftCol.className = 'remote-col remote-left-split';
 
     const graveZone = document.createElement('div');
     graveZone.className = 'remote-zone';
@@ -1387,8 +1429,8 @@ function renderRemotePlayers(){
     battleCol.className = 'remote-col remote-col-center';
     const battlefieldZone = document.createElement('div');
     battlefieldZone.className = 'remote-zone remote-battle-area';
-    battlefieldZone.innerHTML = `<div class="zone-title">Champ de bataille (${(player.battlefield || []).length + (player.tokens || []).length})</div>`;
     const battlefieldCards = [...(player.battlefield || []), ...(player.tokens || [])];
+    battlefieldZone.innerHTML = `<div class="zone-title">Champ de bataille (${battlefieldCards.length})</div>`;
     battlefieldCards.forEach((card, index) => {
       const el = document.createElement('div');
       const cardX = Number.isFinite(card.x) ? card.x : 20 + (index % 4) * 90;
@@ -1424,22 +1466,7 @@ function renderRemotePlayers(){
       renderCountersOnEl(el, card);
       commandZone.appendChild(el);
     }
-
-    const tokensZone = document.createElement('div');
-    tokensZone.className = 'remote-zone';
-    tokensZone.innerHTML = `<div class="zone-title">Tokens (${(player.tokens || []).length})</div>`;
-    for(const card of player.tokens || []){
-      const el = document.createElement('div');
-      el.className = `card ${card.tapped ? 'tapped' : ''}`;
-      el.style.backgroundImage = card.image ? `url(${card.image})` : 'linear-gradient(90deg,#444,#666)';
-      el.addEventListener('mouseenter', () => showCardZoom(card));
-      el.addEventListener('mouseleave', hideCardZoom);
-      renderCountersOnEl(el, card);
-      tokensZone.appendChild(el);
-    }
-
     rightCol.appendChild(commandZone);
-    rightCol.appendChild(tokensZone);
 
     layout.appendChild(leftCol);
     layout.appendChild(battleCol);
@@ -1540,6 +1567,7 @@ function handleSocketMessage(rawMessage){
 }
 
 function connectRemotePlayer(){
+  alert('Procédure à suivre :\n1. Entrez le nom de votre adversaire.\n2. Entrer le nom de la salle.\n3. Entrer l\'URL du serveur WebSocket. Pour cela gardez ce qui vous est proposé si les 2 joueurs jouent sur le même ordinateur. Sinon, remplacez "localhost" par l\'adresse IP de la machine hébergeant le serveur.\n4. Faites la meme manipulation sur l\'autre ordinateur. Les 2 joueurs doivent utiliser le même nom de salle et le même serveur WebSocket.');
   const playerName = prompt('Nom du joueur distant', 'Joueur 2');
   if(!playerName) return;
 
@@ -2284,7 +2312,41 @@ async function fetchCardByName(name){
 }
 
 function chooseImageFromData(data){
-  return data.image_uris?.normal || data.card_faces?.[0]?.image_uris?.normal || data.image_uris?.large || '';
+  if (!data || typeof data !== 'object') return 'https://cards.scryfall.io/back.png';
+
+  const pickFromImageUris = (uris) => {
+    if (!uris || typeof uris !== 'object') return '';
+    return (
+      uris.png ||
+      uris.normal ||
+      uris.large ||
+      uris.small ||
+      uris.border_crop ||
+      ''
+    );
+  };
+
+  const direct = pickFromImageUris(data.image_uris);
+  if (direct) return direct;
+
+  if (Array.isArray(data.card_faces)) {
+    for (const face of data.card_faces) {
+      const faceImage = pickFromImageUris(face?.image_uris) || face?.image || face?.imageUrl || '';
+      if (faceImage) return faceImage;
+    }
+  }
+
+  if (Array.isArray(data.faces)) {
+    for (const face of data.faces) {
+      if (typeof face === 'string' && face.trim()) return face;
+      if (face && typeof face === 'object') {
+        const faceImage = pickFromImageUris(face.image_uris) || face.image || face.imageUrl || '';
+        if (faceImage) return faceImage;
+      }
+    }
+  }
+
+  return data.image || data.imageUrl || 'https://cards.scryfall.io/back.png';
 }
 function isDoubleFaced(card){
 
@@ -2695,4 +2757,4 @@ window._mtg = {
 };
 </script>
 </body>
-</html>
+</html>M
