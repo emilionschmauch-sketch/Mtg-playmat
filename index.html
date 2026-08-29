@@ -775,115 +775,76 @@ $('loadDeck').addEventListener('click', async ()=>{
     return { qty: 1, name: rawLine.trim(), isTokenLine: true };
   });
 
-  const entryMap = new Map();
-  for (const entry of parsedEntries) {
-    const key = normalizeCardName(entry.name || '').toLowerCase() || (entry.name || '').trim().toLowerCase();
-    if (!entryMap.has(key)) {
-      entryMap.set(key, { ...entry, qty: 0 });
+  const results = await Promise.all(parsedEntries.map(async entry => {
+    const { qty, name, isTokenLine } = entry;
+    if (isTokenLine) {
+      const local = await funcarteDB.get(name);
+      if (local && local.isTokenTemplate) {
+        return { type: 'tokenTemplate', value: { id: uid('tmpl'), name: local.name, image: local.imageUrl, raw: local, isToken: true } };
+      }
     }
-    entryMap.get(key).qty += Math.max(1, Number(entry.qty) || 1);
-  }
 
-  const uniqueEntries = [...entryMap.values()];
-  const queue = uniqueEntries.slice();
-  const results = [];
-  const workerCount = Math.min(6, Math.max(1, queue.length));
-
-  const worker = async () => {
-    while (queue.length) {
-      const entry = queue.shift();
-      if (!entry) continue;
-
-      const { qty, name, isTokenLine } = entry;
-      let data = null;
-      let fetchError = null;
-
-      try {
-        if (isTokenLine) {
-          const local = await funcarteDB.get(name);
-          if (local && local.isTokenTemplate) {
-            results.push({ type: 'tokenTemplate', value: { id: uid('tmpl'), name: local.name, image: local.imageUrl, raw: local, isToken: true } });
-            continue;
-          }
-        }
-
-        const res = await fetchCardByName(name);
-        if (res && res.error) {
-          fetchError = res.message || 'not found';
-        } else {
-          data = res && res.data ? res.data : null;
-        }
-      } catch (error) {
-        fetchError = error && error.message ? error.message : 'chargement impossible';
-      }
-
-      if (!data) {
-        if (fetchError) {
-          errors.push(`${name}: ${fetchError}`);
-        }
-        continue;
-      }
-
-      if (Array.isArray(data.all_parts)) {
-        data.all_parts.forEach(p => { if(p.component === 'token') tokenIds.add(p.id); });
-      }
-
-      const cards = [];
-      for(let i=0;i<qty;i++){
-        cards.push({
-          id: uid('card'),
-          name: data.name || (data.card_faces?.[0]?.name) || name,
-          image: chooseImageFromData(data),
-          raw: data,
-          counters: {},
-          tapped: false,
-          face: 0,
-          zone: 'deck',
-          x: 20 + Math.random() * 200,
-          y: 20 + Math.random() * 200,
-          isToken: false
-        });
-      }
-      results.push({ type: 'cards', value: cards });
+    const res = await fetchCardByName(name);
+    if (res.error) {
+      return { type: 'error', value: `${name}: ${res.message}` };
     }
-  };
 
-  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+    const data = res.data;
+    if (Array.isArray(data.all_parts)) {
+      data.all_parts.forEach(p => { if(p.component === 'token') tokenIds.add(p.id); });
+    }
+
+    const cards = [];
+    for(let i=0;i<qty;i++){
+      cards.push({
+        id: uid('card'),
+        name: data.name || (data.card_faces?.[0]?.name) || name,
+        image: chooseImageFromData(data),
+        raw: data,
+        counters: {},
+        tapped: false,
+        face: 0,
+        zone: 'deck',
+        x: 20 + Math.random() * 200,
+        y: 20 + Math.random() * 200,
+        isToken: false
+      });
+    }
+    return { type: 'cards', value: cards };
+  }));
 
   for (const result of results) {
     if (result.type === 'tokenTemplate') {
       state.tokensTemplates.push(result.value);
+    } else if (result.type === 'error') {
+      errors.push(result.value);
     } else if (result.type === 'cards') {
       state.deck.push(...result.value);
     }
   }
 
-  // fetch token templates
   const tokenPromises = Array.from(tokenIds).map(async tid => {
     try{
-      const d = await fetchJsonWithTimeout(`https://api.scryfall.com/cards/${encodeURIComponent(tid)}`, { headers: { Accept: 'application/json' } }, 6000);
+      const d = await fetchJsonWithTimeout(buildScryfallUrl(`/cards/${encodeURIComponent(tid)}`), { headers: { Accept: 'application/json' } }, 6000);
       if(d && d.object !== 'error') state.tokensTemplates.push({ id: uid('tmpl'), name: d.name, image: chooseImageFromData(d), raw:d });
     }catch(e){ console.warn('token fetch error', e); }
   });
   await Promise.allSettled(tokenPromises);
 
-  // build library: shuffle deck
   state.library = shuffleArray(state.deck.slice());
-  // ask commander
-  const cmd = prompt('Nom du commandant (laisser vide si aucun) :');
+
+  const cmd = safePrompt('Nom du commandant (laisser vide si aucun) :', '');
   if(cmd && cmd.trim()){
-    // try find in library
-    const idx = state.library.findIndex(c => (c.name||'').toLowerCase() === cmd.trim().toLowerCase());
+    const cleaned = cmd.trim();
+    const idx = state.library.findIndex(c => (c.name||'').toLowerCase() === cleaned.toLowerCase());
     if(idx > -1){
       const card = state.library.splice(idx,1)[0];
       state.commandZone.push(card);
-      // memorize chosen commander so we can restore it on new games
       state.chosenCommander = card;
       state.chosenCommanderId = card.id;
       commandWrap.style.display = 'block';
     } else {
-      // fuzzy search
-      const idx2 = state.library.findIndex(c => (c.name||'').toLowerCase().includes(cmd.trim().toLowerCase()));
+      const idx2 = state.library.findIndex(c => (c.name||'').toLowerCase().includes(cleaned.toLowerCase()));
       if(idx2 > -1){
         const card = state.library.splice(idx2,1)[0];
         state.commandZone.push(card);
@@ -891,25 +852,23 @@ $('loadDeck').addEventListener('click', async ()=>{
         state.chosenCommanderId = card.id;
         commandWrap.style.display = 'block';
       } else {
-        // try fetching if not present
         const fetched = await Promise.race([
-          fetchCardByName(cmd.trim()),
+          fetchCardByName(cleaned),
           new Promise(resolve => setTimeout(() => resolve({ error:true, message:'timeout' }), 2500))
         ]);
         if(!fetched.error){
           const d = fetched.data;
           const card = { id: uid('card'), name: d.name, image: chooseImageFromData(d), raw:d, counters:{}, tapped:false };
           state.commandZone.push(card);
-          // fetched commander (not originally in deck) — remember it too
           state.chosenCommander = card;
           state.chosenCommanderId = card.id;
           commandWrap.style.display = 'block';
         } else {
           const fallbackCard = {
             id: uid('card'),
-            name: cmd.trim(),
+            name: cleaned,
             image: '',
-            raw: { name: cmd.trim() },
+            raw: { name: cleaned },
             counters:{},
             tapped:false
           };
@@ -924,6 +883,7 @@ $('loadDeck').addEventListener('click', async ()=>{
     commandWrap.style.display = 'none';
     state.chosenCommander = null; state.chosenCommanderId = null;
   }
+
   renderAll();
   if(errors.length) errorsDiv.innerHTML = '<div class="err">Erreurs :</div><ul style="color:#ffcccc">'+errors.map(e=>`<li>${e}</li>`).join('')+'</ul>';
   $('loadStatus').style.display = 'none';
@@ -1568,11 +1528,11 @@ function handleSocketMessage(rawMessage){
 
 function connectRemotePlayer(){
   alert('Procédure à suivre :\n1. Entrez le nom de votre adversaire.\n2. Entrer le nom de la salle.\n3. Entrer l\'URL du serveur WebSocket. Pour cela gardez ce qui vous est proposé si les 2 joueurs jouent sur le même ordinateur. Sinon, remplacez "localhost" par l\'adresse IP de la machine hébergeant le serveur.\n4. Faites la meme manipulation sur l\'autre ordinateur. Les 2 joueurs doivent utiliser le même nom de salle et le même serveur WebSocket.');
-  const playerName = prompt('Nom du joueur distant', 'Joueur 2');
+  const playerName = safePrompt('Nom du joueur distant', 'Joueur 2');
   if(!playerName) return;
 
-  const roomName = prompt('Nom de la salle', multiplayer.room);
-  const endpoint = prompt('URL WebSocket', 'ws://localhost:8080');
+  const roomName = safePrompt('Nom de la salle', multiplayer.room);
+  const endpoint = safePrompt('URL WebSocket', 'ws://localhost:8080');
   if(!endpoint) return;
 
   multiplayer.name = playerName.trim() || 'Joueur 2';
@@ -2173,6 +2133,18 @@ function normalizeCardName(name){
   return norm;
 }
 
+function safePrompt(message, fallback = ''){
+  try {
+    if (typeof window !== 'undefined' && typeof window.prompt === 'function') {
+      const value = window.prompt(message, fallback);
+      return value === null ? fallback : value;
+    }
+  } catch (error) {
+    console.warn('Prompt blocked by browser:', error);
+  }
+  return fallback;
+}
+
 function fileToDataUrl(file){
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -2205,24 +2177,95 @@ async function compressImageDataUrl(file, { maxWidth = 320, quality = 0.6 } = {}
 
 const scryfallSuccessCache = new Map();
 const scryfallPendingCache = new Map();
+const scryfallFailedCache = new Set();
+let scryfallRequestQueue = Promise.resolve();
+let scryfallRateLimitUntil = 0;
+const SCRYFALL_PROXY_BASE = 'http://localhost:8001/api/scryfall';
+const SCRYFALL_API_BASES = [SCRYFALL_PROXY_BASE, 'https://api.scryfall.io', 'https://api.scryfall.com'];
+
+function buildScryfallUrl(path){
+  const safePath = path.startsWith('/') ? path : `/${path}`;
+  const base = SCRYFALL_PROXY_BASE;
+  return `${base}${safePath}`;
+}
 
 async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 6000){
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    const text = await response.text();
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}${text ? `: ${text.slice(0, 120)}` : ''}`);
-    }
+  const candidates = Array.from(new Set([
+    url,
+    url.replace('http://localhost:8001/api/scryfall', 'https://api.scryfall.io'),
+    url.replace('https://api.scryfall.io', 'https://api.scryfall.com'),
+    url.replace('https://api.scryfall.com', 'https://api.scryfall.io')
+  ]));
+
+  let lastError = null;
+  for (const candidate of candidates) {
     try {
-      return JSON.parse(text);
-    } catch {
-      return text;
+      const waitMs = Math.max(0, scryfallRateLimitUntil - Date.now());
+      if (waitMs > 0) {
+        await new Promise(resolve => setTimeout(resolve, waitMs + 100));
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(candidate, { ...options, signal: controller.signal });
+        const retryAfter = Number(response.headers.get('Retry-After') || '0');
+        if (response.status === 429 || response.status === 503) {
+          const delay = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 2000;
+          scryfallRateLimitUntil = Date.now() + delay;
+          throw new Error(`Scryfall rate limited (${response.status})`);
+        }
+
+        const text = await response.text();
+        if (!response.ok) {
+          const details = text ? text.slice(0, 200) : '';
+          if (candidate.startsWith('/api/scryfall')) {
+            throw new Error(`Proxy Scryfall error: ${details || 'unknown'}`);
+          }
+          throw new Error(`HTTP ${response.status}${details ? `: ${details}` : ''}`);
+        }
+        try {
+          return JSON.parse(text);
+        } catch {
+          return text;
+        }
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    } catch (error) {
+      lastError = error;
+      if (String(error?.message || '').toLowerCase().includes('rate limited')) {
+        continue;
+      }
     }
-  } finally {
-    clearTimeout(timeoutId);
   }
+
+  throw lastError || new Error('Scryfall fetch failed');
+}
+
+function buildCardLookupCandidates(name){
+  const base = normalizeCardName(name || '').trim();
+  const variants = [];
+  const seen = new Set();
+
+  const add = (value) => {
+    const normalized = normalizeCardName(value || '').trim();
+    if (!normalized) return;
+    const key = normalized.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      variants.push(normalized);
+    }
+  };
+
+  add(base);
+  add(base.replace(/[,]/g, ''));
+  add(base.replace(/['’]/g, ''));
+  add(base.replace(/[^\p{L}\p{N}\s]/gu, ' '));
+  add(base.replace(/\s+/g, ' '));
+  add(base.replace(/^the\s+/i, ''));
+
+  return variants;
 }
 
 async function fetchCardByName(name){
@@ -2232,12 +2275,10 @@ async function fetchCardByName(name){
 
   await funcarteDB.ready();
 
-  // 1. Check local funcartes database first (try normalized key and raw)
   const localCard = await funcarteDB.get(normKey) || await funcarteDB.get(norm) || await funcarteDB.get(name);
   if(localCard){
-    // if multiple faces stored, mimic Scryfall double-faced structure
     if(Array.isArray(localCard.faces) && localCard.faces.length > 1){
-      const card_faces = localCard.faces.map((img, idx)=>({ name: localCard.name, image_uris: { normal: img } }));
+      const card_faces = localCard.faces.map((img) => ({ name: localCard.name, image_uris: { normal: img } }));
       return { error:false, data: { name: localCard.name, card_faces, object: 'custom_funcard', isFuncard: true } };
     }
     return {
@@ -2259,47 +2300,24 @@ async function fetchCardByName(name){
   }
 
   const pending = (async () => {
-    const sleep = (ms) => new Promise(r=>setTimeout(r,ms));
-    const maxAttempts = 4;
-    const exactPhraseQuery = `!\"${norm.replace(/\"/g,'')}\"`;
-    const urls = [
-      `https://api.scryfall.com/cards/named?exact=${enc(norm)}`,
-      `https://api.scryfall.com/cards/named?fuzzy=${enc(norm)}`,
-      `https://api.scryfall.com/cards/search?q=${enc(exactPhraseQuery)}`,
-      `https://api.scryfall.com/cards/search?q=${enc(norm)}`
-    ];
+    const magicApiUrl = `https://api.magicthegathering.io/v1/cards?name=${enc(norm)}`;
 
-    let lastError = null;
+    try {
+      const payload = await fetchJsonWithTimeout(magicApiUrl, { headers: { Accept: 'application/json' } }, 12000);
+      const cards = Array.isArray(payload?.cards) ? payload.cards : [];
+      const chosen = cards.find(card => normalizeCardName(card.name || '').toLowerCase() === normKey)
+        || cards.find(card => normalizeCardName(card.name || '').toLowerCase().includes(normKey))
+        || cards[0];
 
-    for(let attempt=1; attempt<=maxAttempts; attempt++){
-      for(const url of urls){
-        try{
-          const payload = await fetchJsonWithTimeout(url, { headers: { Accept: 'application/json' } }, 7000 + attempt * 500);
-          if(payload && payload.object !== 'error') {
-            const result = { error:false, data: payload.object === 'list' && Array.isArray(payload.data) && payload.data.length > 0 ? payload.data[0] : payload };
-            scryfallSuccessCache.set(normKey, result);
-            return result;
-          }
-          if(payload && payload.object === 'list' && Array.isArray(payload.data) && payload.data.length > 0){
-            const result = { error:false, data: payload.data[0] };
-            scryfallSuccessCache.set(normKey, result);
-            return result;
-          }
-          const message = payload?.details || payload?.message || 'not found';
-          if(message && message !== 'not found') {
-            lastError = new Error(message);
-          }
-        } catch(e){
-          lastError = e;
-        }
+      if (chosen) {
+        const result = { error: false, data: chosen };
+        scryfallSuccessCache.set(normKey, result);
+        return result;
       }
 
-      if(attempt < maxAttempts){
-        await sleep(400 * attempt);
-        continue;
-      }
-
-      return { error:true, message: lastError?.message || 'fetch error' };
+      return { error: true, message: 'Carte introuvable sur le service de cartes' };
+    } catch (error) {
+      return { error: true, message: error?.message || 'fetch error' };
     }
   })();
 
@@ -2312,7 +2330,7 @@ async function fetchCardByName(name){
 }
 
 function chooseImageFromData(data){
-  if (!data || typeof data !== 'object') return 'https://cards.scryfall.io/back.png';
+  if (!data || typeof data !== 'object') return '';
 
   const pickFromImageUris = (uris) => {
     if (!uris || typeof uris !== 'object') return '';
@@ -2326,7 +2344,7 @@ function chooseImageFromData(data){
     );
   };
 
-  const direct = pickFromImageUris(data.image_uris);
+  const direct = pickFromImageUris(data.image_uris) || data.imageUrl || data.image || '';
   if (direct) return direct;
 
   if (Array.isArray(data.card_faces)) {
@@ -2346,7 +2364,7 @@ function chooseImageFromData(data){
     }
   }
 
-  return data.image || data.imageUrl || 'https://cards.scryfall.io/back.png';
+  return data.image || data.imageUrl || '';
 }
 function isDoubleFaced(card){
 
@@ -2508,11 +2526,11 @@ $('newTurn').addEventListener('click', ()=>{
   renderAll();
 });
 
-$('drawX').addEventListener('click', ()=>{ const n = parseInt(prompt('Combien piocher ?', '1')); if(!n || n<=0) return; drawX(n); });
-$('millX').addEventListener('click', ()=>{ const n = parseInt(prompt('Combien meuler ?', '1')); if(!n || n<=0) return; millX(n); });
-$('tutorBtn').addEventListener('click', ()=>{ const name = prompt('Nom de la carte'); if(!name) return; tutorByName(name); });
+$('drawX').addEventListener('click', ()=>{ const raw = safePrompt('Combien piocher ?', '1'); const n = parseInt(raw, 10); if(!n || n<=0) return; drawX(n); });
+$('millX').addEventListener('click', ()=>{ const raw = safePrompt('Combien meuler ?', '1'); const n = parseInt(raw, 10); if(!n || n<=0) return; millX(n); });
+$('tutorBtn').addEventListener('click', ()=>{ const name = safePrompt('Nom de la carte', ''); if(!name) return; tutorByName(name); });
 $('addToBoardBtn').addEventListener('click', ()=>{
-  const name = prompt('Nom de la carte à ajouter au board');
+  const name = safePrompt('Nom de la carte à ajouter au board', '');
   if(!name) return;
   addCardToBoardByName(name);
 });
