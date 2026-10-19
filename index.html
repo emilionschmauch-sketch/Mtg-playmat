@@ -1903,7 +1903,11 @@ body.game-over{
    $('toggleHand').textContent = handHidden ? 'Révéler main' : 'Cacher main';
    renderAll();
  });
- $('newGame').addEventListener('click', newGame);
+ $('newGame').addEventListener('click', ()=>{
+   if(confirm('Voulez-vous vraiment commencer une nouvelle partie ?')) {
+     newGame();
+   }
+ });
  /* ===========================
     Tokens: create from template
     =========================== */
